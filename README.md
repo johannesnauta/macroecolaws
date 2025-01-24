@@ -67,7 +67,7 @@ For plotting, see
 
 
 ---
-This small repository is meant to be shared in order to facilitate the recreation of the analysis of the OTU data provided by [Grilli, 2020](https://www.nature.com/articles/s41467-020-18529-y) and the accompanying [github repository `lawdiv`](https://github.com/jacopogrilli/lawsdiv). 
+This small repository is meant to be shared in order to facilitate the recreation of the analysis of the OTU data provided by [Grilli, 2020](https://www.nature.com/articles/s41467-020-18529-y) and the accompanying [github repository `lawsdiv`](https://github.com/jacopogrilli/lawsdiv). 
 The aim is to investigate how to recreate the macroecological laws, and to increase the likelihood of recreation by others who are, perhaps, less familiar with `R` and/or simply want something "that just runs". 
 The intention of this script is therefore to be a standalone analyser and plotter for the specific OTU data provided and is by no means a full analysis. 
 There may also be countless errors as, as of writing this, I have yet to reproduce the figures.

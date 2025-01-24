@@ -49,7 +49,13 @@ function plot_mad(;
         xlabelsize=12, ylabelsize=12,
         yscale=log10, yminorticksvisible=false,
         xticklabelsize=9, yticklabelsize=9
-    )    
+    )
+    #/ Specify colors 
+    colors = CairoMakie.to_colormap(:tab10)
+    markers = [
+        :circle, :utriangle, :cross, :rect, :diamond,
+        :dtriangle, :pentagon, :xcross, :hexagon, :rtriangle
+    ]
 
     #/ Load environment names
     edb = CSV.read(envstatsfname, DataFrame, delim=", ")
@@ -66,7 +72,10 @@ function plot_mad(;
         #/ Plot
         if !rescale
             #/ Just plot directly
-            scatter!(ax, xplot, fh.bincounts, markersize=2, strokewidth=.5, label=envname)
+            scatter!(
+                ax, xplot, fh.bincounts, markersize=2, strokewidth=.5,
+                color=colors[i], label=envname
+            )
         else
             #/ Rescale and then plot
             μ = edb[i,:mu]
@@ -90,7 +99,10 @@ function plot_mad(;
             Z = 1 - cdf(pnormal, c)
             pdfscaled = fh.bincounts * σ * Z
             #~ Plot
-            scatter!(ax, xscaled, pdfscaled, markersize=4, strokewidth=.5, label=envname)
+            scatter!(
+                ax, xscaled, pdfscaled, markersize=4, strokewidth=.5,
+                color=colors[i], marker=markers[i], label=envname
+            )
         end
     end
 

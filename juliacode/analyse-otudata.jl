@@ -122,6 +122,7 @@ function analyse(;
                 μest, σest = Moments.fittrunclognormal(
                     logfreqs; uguess = [mean(logfreqs), std(logfreqs)], lower=cutoff
                 )
+                # μest, σest = Moments.getestimates(logfreqs, c=cutoff)
                 _idx = findall(envstatsdb.environmentname.==env)[begin]
                 envstatsdb[_idx,:mu] = μest
                 envstatsdb[_idx,:sigma] = σest
