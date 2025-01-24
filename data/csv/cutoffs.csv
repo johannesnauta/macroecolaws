@@ -1,0 +1,17 @@
+environmentname, cutoff
+sludge, -10.0
+lake, -10.0
+river, -10.0
+gut1, -10.0
+gut2, -10.0
+glacier, -10.0
+seawater, -10.0
+soil, -10.0
+oral, -10.0
+vaginal, -Inf
+oralcavity, -Inf
+feces, -Inf
+skin, -Inf
+thermalvents, -Inf
+gut3, -Inf
+marine, -Inf
