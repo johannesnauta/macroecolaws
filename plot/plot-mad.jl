@@ -1,4 +1,8 @@
-#= Module for plotting mean abundance distributions (MADs) from data =#
+#= Module for plotting mean abundance distributions (MADs) from data
+
+!note: some functionality is limited (such as no diff. markers), as the code was originally 
+       written using a specific personalized theme that is not included in this repository
+=#
 #/ Start module
 module MADPlotter
 
@@ -27,10 +31,11 @@ const JLDATAPATH = "../data/jld/"
     Aggregates all environments into a single plot
 """
 function plot_mad(;
-    envstatsfname::String = CSVDATAPATH * "csv/environmentstats.csv",
+    envstatsfname::String = CSVDATAPATH * "environmentstats.csv",
     histdir::String = JLDATAPATH,
-    rescale=false, compute=false,
-    savefig=false, figname=nothing
+    rescale=true,
+    savefig=false,
+    figname=nothing
 )
     #/ Create figure
     width = .9*246
@@ -39,9 +44,11 @@ function plot_mad(;
     )
     ax = Axis(
         fig[1,1],
-        limits=(-5,5,1e-4,1e1),
+        limits=(-6,6,1e-4,1e1),
         xlabel=L"\textrm{rescaled\;log\;abundances}", ylabel=L"\textrm{pdf}",
-        yscale=log10, yminorticksvisible=false
+        xlabelsize=12, ylabelsize=12,
+        yscale=log10, yminorticksvisible=false,
+        xticklabelsize=9, yticklabelsize=9
     )    
 
     #/ Load environment names
@@ -71,7 +78,7 @@ function plot_mad(;
             c = edb[i,:cutoff]
 
             #/ Strange Grilli rescaling
-            (i == 1) && (lines!(ax, xpdf, 10.0.^(-xpdf.^2), color=:black, linewidth=0.5))
+            # (i == 1) && (lines!(ax, xpdf, 10.0.^(-xpdf.^2), color=:black, linewidth=0.5))
             # xscaled = @. (xplot - μ) / σ
             # pdfscaled = @. 10^(log(fh.bincounts)-log(0.5*erfc(μ-c)/sqrt(2*σ^2) + log(2π)/2))            
             xscaled = @. (xplot - μ) / σ
