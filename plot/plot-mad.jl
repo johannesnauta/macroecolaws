@@ -66,26 +66,29 @@ function plot_mad(;
         #/ Plot
         if !rescale
             #/ Just plot directly
-            scatter!(ax, xplot, fh.bincounts, markersize=4, strokewidth=.5, label=envname)
+            scatter!(ax, xplot, fh.bincounts, markersize=2, strokewidth=.5, label=envname)
         else
-            if i == 1                
-                n = Normal(0,1)                
-                lines!(ax, xpdf, xpdf -> pdf(n,xpdf), color=:black, linewidth=0.5)
-            end
             #/ Rescale and then plot
             μ = edb[i,:mu]
             σ = edb[i,:sigma]
             c = edb[i,:cutoff]
 
             #/ Strange Grilli rescaling
-            # (i == 1) && (lines!(ax, xpdf, 10.0.^(-xpdf.^2), color=:black, linewidth=0.5))
-            # xscaled = @. (xplot - μ) / σ
-            # pdfscaled = @. 10^(log(fh.bincounts)-log(0.5*erfc(μ-c)/sqrt(2*σ^2) + log(2π)/2))            
+            # (i == 1) && (
+            #     lines!(ax, xpdf,10.0.^(-xpdf.^2), color=:black,linewidth=0.5,linestyle=:dash)
+            # )
+            # xscaled = @. (xplot - μ) / σ / sqrt(2)
+            # pdfscaled = @. 10^(log(fh.bincounts)-log(0.5*erfc(μ-c)/sqrt(2*σ^2) + log(2π)/2))
+
+            #/ Normal rescaling
+            if i == 1
+                n = Normal(0,1)
+                lines!(ax, xpdf, xpdf -> pdf(n,xpdf), color=:black, linewidth=0.8)
+            end
             xscaled = @. (xplot - μ) / σ
-            pdfscaled = fh.bincounts
-            m = truncated(Normal(μ,σ), lower=c, upper=Inf)
-            Z = 1 - cdf(m, c)
-            pdfscaled = fh.bincounts * σ / Z
+            pnormal = Normal(μ,σ)
+            Z = 1 - cdf(pnormal, c)
+            pdfscaled = fh.bincounts * σ * Z
             #~ Plot
             scatter!(ax, xscaled, pdfscaled, markersize=4, strokewidth=.5, label=envname)
         end
@@ -107,12 +110,11 @@ end
     is lost when one rescales the distributions
 """
 function plot_mads(;
-    envstatsfname::String = Dirpaths.otudata_path() * "csv/environmentstats.csv",
-    histdir::String = Dirpaths.otudata_path() * "jld/",
+    envstatsfname::String = CSVDATAPATH * "environmentstats.csv",
+    histdir::String = JLDATAPATH,
     rescale = false,
     savefig=false, figname=nothing
 )
-    set_theme!(aps_theme())
     #/ Create figure
     width = 1.4 * 246
     fig = Figure(;
@@ -139,7 +141,7 @@ function plot_mads(;
         xlabelsize=10, ylabelsize=10,
         yscale=log10, yminorticksvisible=false,
         xticklabelsvisible=(i==3), yticklabelsvisible=(j==1),
-        limits=(-20,5,1e-3,1e1),
+        limits=(-25,0,1e-3,1e0),
         xticklabelsize=7, yticklabelsize=7,
     ) for i in 1:3, j in 1:3]
     

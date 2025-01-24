@@ -68,7 +68,7 @@ function analyse(;
     
     #/ Loop through all environments, filter the data, compute moments, and store
     for (i,env) in enumerate(envnamesdb.environmentname)
-        if isfile(CSVDATAPATH * "rawotudata_$(env).csv")
+            if isfile(CSVDATAPATH * "rawotudata_$(env).csv")
             @info "Analysing... [env: $(env)]"
             edb = CSV.read(CSVDATAPATH * "rawotudata_$(env).csv", DataFrame, delim=", ")
             if filter
@@ -104,7 +104,7 @@ function analyse(;
     end
 
     #/ If the moments are to be computed, loop again and compute for all environments
-    #  the moments using the desired procedure(s)    
+    #  the moments using the desired procedure(s)
     if moments
         statsfname = CSVDATAPATH * "environmentstats.csv"
         if !isfile(statsfname)
@@ -114,7 +114,7 @@ function analyse(;
         end
         for (i,env) in enumerate(envnamesdb.environmentname)
             cutoff = only(@subset(cutoffsdb, :environmentname .== env)[!,:cutoff])
-            freqdatafname = CSVDATAPATH*"frequencydata_$(env).csv"
+            freqdatafname = CSVDATAPATH*"frequencydata_$(env).csv"            
             if isfile(freqdatafname)
                 db = CSV.read(freqdatafname, DataFrame, delim=", ")
                 #/ Compute moments
@@ -181,7 +181,7 @@ end
 function filter_data(db::DataFrame;
     minsamples = 30,
     minreads = 10_000,
-    mincounts = 50,
+    mincounts = 1,
     remove_runs = ["ERR1104477", "ERR1101508", "SRR2240575"] # bad runs filtered by Grilli
 )
     #/ Check the total number of samples
@@ -211,22 +211,26 @@ Compute statistics for a specific filtered dataframe
 !note: Assumes that the frequency is defined as #count/#totalreads
 """
 function compute_stats(fdb::DataFrame; cutoff::Float64 = -100.0)
+    nruns = length(unique(fdb[!,:run_id]))
     #/ Chain multiple dataframe operations to compute mean frequency
     statsdb = @chain fdb begin
         #~ Compute frequencies
         @transform(:frequency = :count ./ :nreads)
         #~ For each species (OTU), group, and compute mean and variance of the frequency
-        @groupby(:otu_id)
-        @combine(
+        @by(
+            :otu_id,
             :mean_frequency = Statistics.mean(skipmissing(:frequency)),
             :var_frequency = Statistics.var(skipmissing(:frequency), corrected=false),
-            :num_samples = length(:otu_id)
+            :num_samples = length(:sample_id),
+            :occupation = length(:otu_id)      #~ similar to the n() function in `R`
         )
+        #~ Take the occupation number into account
+        @transform(:mean_frequency = :mean_frequency .* (:occupation ./ nruns))
         #~ Perform a log-transform on the mean-frequency (needed for lognormal)
         @transform(:log_frequency = log.(:mean_frequency))
         #~ Select only those above a specified cutoff (filter)
         @subset(:log_frequency .> cutoff)
-    end    
+    end
     return statsdb
 end
 

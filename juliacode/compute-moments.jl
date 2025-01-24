@@ -40,7 +40,7 @@ end
 
 """Compute moments of a truncated lognormal distribution"""
 function fittrunclognormal(samples; uguess = [0.0, 1.0], lower=-Inf, upper=Inf)
-    #/ 
+    #/ Fit a truncated lognormal distribution
     function truncnormlikelihood(p, data)
         μ, σ = p
         p = truncated(Normal(μ,sqrt(σ^2)), lower=lower, upper=upper)
