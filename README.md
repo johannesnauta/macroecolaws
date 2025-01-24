@@ -8,6 +8,28 @@ At its core it aims to reproduce the results presented in [Grilli, 2020](https:/
 The codebase contains both the raw data and a submodule that is the original code that accompanied the paper.
 
 ## Running the `Julia` code
+
+### Packages 
+As this little repository is _not_ meant to be a functioning package/module, it does not include a `Project.toml` by which users can easily install the packages. 
+The actual reason for this is that this code has been written as a part of a much larger codebase, and nesting `Project.toml`s within other (large) modules is a recipe for disaster. 
+Therefore, it requires the user to install the appropriate packages themselves. 
+There should be no dependence on specific versions (as far as I am aware).
+
+The packages, in no particular order, that are used are
+- I/O
+    - `CSV.jl`, `JLD2.jl`, `RData.jl`
+- dataframes
+    - `Chain.jl`, `DataFrames.jl`, `DataFramesMeta.jl`
+- statistics
+    - `Statistics.jl`, `FHist.jl`
+- solvers
+    - `NonlinearSolve.jl`, `NaNMath.jl`, `SpecialFunctions.jl`, `Optim.jl`
+- distributions and rng manipulation
+    - `Distributions.jl`, `Random.jl`
+- plotting
+    - `CairoMakie.jl`, `LaTeXString.jl`
+
+###
 The main file to run is `juliacode/analyse-otudata.jl`, which (depending on the flags/options) does the following;
 - [`split=true`] splits the data into separated OTUs for each of the "environments" (here, an "environment" is a specific projectclassification; names for the environments are defined in `data/csv/environmentnames.csv`)
 - [`filter=true`] filters the split data by omitting entries which, for example, do not contain enough samples, counts, and or reads
@@ -40,6 +62,7 @@ julia> OTUData.analyse()
 ### Other modules
 For plotting, see
 - for plotting the lognormal distribution(s), see `plot/plot-mad.jl`
+    - note that this module possibly relies on additional packages, such as `ElectronDisplay.jl` in order for the plots to be shown
 - [...]
 
 
