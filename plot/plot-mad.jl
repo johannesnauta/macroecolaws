@@ -14,6 +14,12 @@ using JLD2
 using CSV, DataFrames, DataFramesMeta
 using FHist
 
+#~ Specify paths
+#!note: if these do not exist, create them 
+const RDATAPATH = "../data/rdata/"
+const CSVDATAPATH = "../data/csv/"
+const JLDATAPATH = "../data/jld/"
+
 #################
 ### FUNCTIONS ###
 """
@@ -21,8 +27,8 @@ using FHist
     Aggregates all environments into a single plot
 """
 function plot_mad(;
-    envstatsfname::String = Dirpaths.otudata_path() * "csv/environmentstats.csv",
-    histdir::String = Dirpaths.otudata_path() * "jld/",
+    envstatsfname::String = CSVDATAPATH * "csv/environmentstats.csv",
+    histdir::String = JLDATAPATH,
     rescale=false, compute=false,
     savefig=false, figname=nothing
 )
@@ -49,25 +55,23 @@ function plot_mad(;
         fh = JLD2.load(histdir*"fhist_$(envname).jld2")["histogram"] |> normalize
         #~ Compute x-values at which to plot
         xplot = (fh.binedges[begin][2:end] + fh.binedges[begin][1:end-1]) ./ 2
-
+        xpdf = range(-5,5,250)
         #/ Plot
         if !rescale
             #/ Just plot directly
             scatter!(ax, xplot, fh.bincounts, markersize=4, strokewidth=.5, label=envname)
         else
-            if i == 1
-                xpdf = range(-5,5,250)
-                n = Normal(0,1)
-                # lines!(ax, xpdf, 10.0.^(-xpdf.^2), color=:black, linewidth=0.5)
+            if i == 1                
+                n = Normal(0,1)                
                 lines!(ax, xpdf, xpdf -> pdf(n,xpdf), color=:black, linewidth=0.5)
             end
             #/ Rescale and then plot
             μ = edb[i,:mu]
             σ = edb[i,:sigma]
             c = edb[i,:cutoff]
-            @info "checking" μ σ c
 
             #/ Strange Grilli rescaling
+            (i == 1) && (lines!(ax, xpdf, 10.0.^(-xpdf.^2), color=:black, linewidth=0.5))
             # xscaled = @. (xplot - μ) / σ
             # pdfscaled = @. 10^(log(fh.bincounts)-log(0.5*erfc(μ-c)/sqrt(2*σ^2) + log(2π)/2))            
             xscaled = @. (xplot - μ) / σ
