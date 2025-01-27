@@ -217,16 +217,20 @@ function compute_stats(fdb::DataFrame; cutoff::Float64 = -100.0)
     statsdb = @chain fdb begin
         #~ Compute frequencies
         @transform(:frequency = :count ./ :nreads)
+        @transform(:varfrequency = (:count .^2 - :count) ./ (:nreads.^2))
         #~ For each species (OTU), group, and compute mean and variance of the frequency
         @by(
             :otu_id,
             :mean_frequency = Statistics.mean(skipmissing(:frequency)),
-            :var_frequency = Statistics.var(skipmissing(:frequency), corrected=false),
+            :var_frequency = Statistics.mean(skipmissing(:varfrequency)),
+            # :var_frequency = Statistics.var(skipmissing(:frequency), corrected=false),
             :num_samples = length(:sample_id),
             :occupation = length(:otu_id)      #~ similar to the n() function in `R`
         )
         #~ Take the occupation number into account
         @transform(:mean_frequency = :mean_frequency .* (:occupation ./ nruns))
+        @transform(:var_frequency = :var_frequency .* (:occupation ./ nruns))
+        @transform(:var_frequency = :var_frequency .- :mean_frequency.^2)
         #~ Perform a log-transform on the mean-frequency (needed for lognormal)
         @transform(:log_frequency = log.(:mean_frequency))
         #~ Select only those above a specified cutoff (filter)
