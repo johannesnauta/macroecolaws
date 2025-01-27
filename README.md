@@ -3,13 +3,16 @@ Repository to subtract macro-ecological laws from microbial abundance data.
 At its core it aims to reproduce the results presented in [Grilli, 2020](https://www.nature.com/articles/s41467-020-18529-y). That is, it analyses the data to obtain
 * a lognormal mean-abundance distribution (MAD)
 * [not-yet-implemented] a gamma abundance fluctuation distribution (AFD)
-* [not-yet-implemented] Taylor's law 
+* Taylor's law $\sigma^2 \propto \mu^\gamma$
 
 The codebase contains both the raw data and a submodule that is the original code that accompanied the paper.
 
 ## Running the `Julia` code
 
-### Packages 
+### Packages
+> [!NOTE]  
+> During development some more packages are used and need to be included. The list below will *not* be updated exhaustively. If some packages are missing, simply install them.
+  
 As this little repository is _not_ meant to be a functioning package/module, it does not include a `Project.toml` by which users can easily install the packages. 
 The actual reason for this is that this code has been written as a part of a much larger codebase, and nesting `Project.toml`s within other (large) modules is a recipe for disaster. 
 Therefore, it requires the user to install the appropriate packages themselves. 
