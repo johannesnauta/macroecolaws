@@ -47,7 +47,8 @@ function analyse(;
     split=true,     #~ Flag to split raw data into environment-specific data
     filter=true,    #~ Flag to filter raw data based on counts, reads, etc.
     compute=true,   #~ Flag to compute statistics (mean, var, etc.) from (filtered) data
-    histogram=true, #~ Flag to compute histogram of (filtered) data
+    mad=true,       #~ Flag to compute histogram of mean abundances of (filtered) data
+    afd=true,       #~ Flag to compute histogram of abundance fluctuations of (filtered) data
     moments=true,   #~ Flag to compute estimates of moments of (filtered) data
     dry=false       #~ Flag for a 'dry' run, wherein nothing is saved (may break things)
 )
@@ -77,24 +78,43 @@ function analyse(;
             end
             #!note: if edb=nothing, then there are no datapoints that 'survive' the filtering
             if !isnothing(edb)
+                #/ if compute=true, compute summary statistics
+                #!note: Using the (filtered) statsdb both the lognormal and Taylor's law
+                #       can be extracted, so return the DataFrame here for completeness
                 if compute
                     #/ Compute statistics
                     cutoff = only(@subset(cutoffsdb, :environmentname .== env)[!,:cutoff])
-                    statsdb = compute_stats(edb, cutoff=cutoff)
+                    statsdb = compute_summarystatistics(edb, cutoff=cutoff)
+                    logfreqdb = compute_rescaledlogfrequencies(edb, cutoff=cutoff)
                     #/ Save
                     if !dry
-                        statsfname = CSVDATAPATH*"frequencydata_$(env).csv"
+                        statsfname = CSVDATAPATH*"meanfrequencydata_$(env).csv"
                         CSV.write(statsfname, statsdb, delim=", ")
+                        # logfreqfname = CSVDATAPATH*"logfrequencydata_$(env).csv"
+                        # CSV.write(logfreqfname, logfreqdb, delim=", ")
                     end
                 else
-                    statsfname = CSVDATAPATH*"frequencydata_$(env).csv"
+                    statsfname = CSVDATAPATH*"meanfrequencydata_$(env).csv"
                     statsdb = CSV.read(statsfname, DataFrame, delim=", ")
+                    # logfreqfname = CSVDATAPATH*"logfrequencydata_$(env).csv"
+                    # logfreqdb = CSV.read(logfreqfname, DataFrame, delim=", ")
                 end
-                if histogram
+                #/ if mad=true, compute the histogram of mean log frequencies
+                #!note: the relevant column is `:mean_log_frequency`
+                if mad
                     #/ Compute histogram
-                    fh = Histogram.compute_fhist(statsdb[!,:log_frequency])
+                    fh = Histogram.compute_fhist(statsdb[!,:mean_log_frequency])
                     if !dry
-                        JLD2.jldsave(JLDATAPATH * "fhist_$(env).jld2"; histogram = fh)
+                        JLD2.jldsave(JLDATAPATH * "meanfhist_$(env).jld2"; histogram = fh)
+                    end
+                end
+                #/ if afd=true, compute the histogram of log frequencies accross samples
+                #!Note: the relevant column is `:log_frequency`
+                if afd
+                    #/ Compute histogram
+                    fh = Histogram.compute_fhist(logfreqdb[!,:log_frequency])
+                    if !dry
+                        JLD2.jldsave(JLDATAPATH * "afdfhist_$(env).jld2"; histogram = fh)
                     end
                 end
             end
@@ -211,32 +231,77 @@ Compute statistics for a specific filtered dataframe
 
 !note: Assumes that the frequency is defined as #count/#totalreads
 """
-function compute_stats(fdb::DataFrame; cutoff::Float64 = -100.0)
+function compute_summarystatistics(fdb::DataFrame; cutoff::Float64 = -100.0)
+    #/ Compute the total number of runs/samples for the specific environment
     nruns = length(unique(fdb[!,:run_id]))
     #/ Chain multiple dataframe operations to compute mean frequency
     statsdb = @chain fdb begin
         #~ Compute frequencies
         @transform(:frequency = :count ./ :nreads)
-        @transform(:varfrequency = (:count .^2 - :count) ./ (:nreads.^2))
         #~ For each species (OTU), group, and compute mean and variance of the frequency
         @by(
             :otu_id,
             :mean_frequency = Statistics.mean(skipmissing(:frequency)),
-            :var_frequency = Statistics.mean(skipmissing(:varfrequency)),
-            # :var_frequency = Statistics.var(skipmissing(:frequency), corrected=false),
-            :num_samples = length(:sample_id),
-            :occupation = length(:otu_id)      #~ similar to the n() function in `R`
+            :var_frequency = Statistics.var(skipmissing(:frequency), corrected=false),
+            #~ Compute the occupancy; i.e. the fraction of samples (runs) wherein the focal
+            #  species is actually present
+            :occupancy = length(:otu_id) ./ nruns
         )
         #~ Take the occupation number into account
-        @transform(:mean_frequency = :mean_frequency .* (:occupation ./ nruns))
-        @transform(:var_frequency = :var_frequency .* (:occupation ./ nruns))
-        @transform(:var_frequency = :var_frequency .- :mean_frequency.^2)
+        #~ this means that μ → o⋅μ and σ² → o⋅[σ²+μ²(1-o)], where o the occupancy
+        @transform(:mean_frequency = :mean_frequency .* :occupancy)
+        @transform(:var_frequency = :var_frequency .+ :mean_frequency.^2 .* (1 .- :occupancy))
+        @transform(:var_frequency = :var_frequency .* :occupancy)
         #~ Perform a log-transform on the mean-frequency (needed for lognormal)
-        @transform(:log_frequency = log.(:mean_frequency))
+        @transform(:mean_log_frequency = log.(:mean_frequency))
         #~ Select only those above a specified cutoff (filter)
-        @subset(:log_frequency .> cutoff)
+        @subset(:mean_log_frequency .> cutoff, :var_frequency .> 0.0)
     end
     return statsdb
+end
+
+"""
+Compute rescaled log frequencies (relative abundances) across communities (samples)
+
+!note: Assumes that the frequency is defined as #count/#totalreads
+"""
+function compute_rescaledlogfrequencies(fdb::DataFrame; cutoff = -100.0)
+    #/ Compute the total number of runs/samples for the specific environment
+    nruns = length(unique(fdb[!,:run_id]))
+    #/ Chain multiple dataframe operations to compute the rescaled log frequency
+    #~ rescaled log frequency = log((x - μ)/σ)
+    db = @chain fdb begin
+        #~ Compute frequencies
+        @transform(:frequency = :count ./ :nreads)
+        @transform(:log_frequency = log.(:frequency))
+        @subset(:log_frequency .> cutoff)
+    end
+
+    #/ Compute summary statistics for each otu_id
+    summarydb = @chain db begin
+        @by(
+            :otu_id,
+            :mean_logfrequency = mean(skipmissing(:log_frequency)),
+            :std_logfrequency = std(skipmissing(:log_frequency), corrected=false),
+            :occupancy = length(:otu_id) ./ nruns
+        )
+        @subset(:std_logfrequency .> 0.0, :occupancy .≈ 1.0)
+        @select(:otu_id, :mean_logfrequency, :std_logfrequency)
+    end
+
+    # #/ Rescale the log frequency by the summary statistics
+    # #!note: `missing` values are propagated and need to be filtered out
+    db = DataFrames.leftjoin(db, summarydb, on=:otu_id)
+    db = @chain db begin
+        @transform(:log_frequency = (:log_frequency.-:mean_logfrequency)./:std_logfrequency)
+        @transform(:log_frequency = coalesce.(:log_frequency, -Inf))
+        @subset(:log_frequency .> -Inf)
+        # @transform(:frequency = DataFrames.coalesce.(:frequency, -Inf))
+        # @subset(:frequency .> -Inf)
+        # @transform(:log_frequency = log.(:frequency))
+        @subset(:log_frequency .> cutoff)
+    end
+    return db
 end
 
 end # module OTUData

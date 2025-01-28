@@ -42,12 +42,12 @@ function plot_taylor(;
     )
     ax = Axis(
         fig[1,1],
-        limits=(1e-9,1e0,1e-16,1e0),
+        limits=(1e-8,1e0,1e-16,1e0),
         xlabel=L"\textrm{mean\;rel.\;abundance}",
         ylabel=L"\textrm{var.\;rel.\;abundance}",
         xlabelsize=12, ylabelsize=12,
         # xticks=LogTicks(WilkinsonTicks(8)),
-        xticks = LogTicks(-9:3:0), yticks = LogTicks(-15:5:0),
+        xticks = LogTicks(-8:2:0), yticks = LogTicks(-16:4:0),
         xscale=log10, yscale=log10, yminorticksvisible=false,
         xticklabelsize=9, yticklabelsize=9
     )
@@ -69,6 +69,8 @@ function plot_taylor(;
     #~ Allocate 
     afit = Array{Float64}(undef, length(db.environmentname))
     γfit = Array{Float64}(undef, length(db.environmentname))
+    xfit = Float64[]
+    yfit = Float64[]
 
     for (i, envname) in enumerate(db.environmentname)
         #/ Load relative frequency data
@@ -91,12 +93,16 @@ function plot_taylor(;
             σplot = bdb[!,:mean_variance]
             
             #/ Estimate params Taylor's law, and store for later
-            afit[i], γfit[i] = fit_taylor(edb)
+            # afit[i], γfit[i] = fit_taylor(edb)
+            append!(xfit, μplot)
+            append!(yfit, σplot)
+            # append!(xfit, edb[!,:mean_frequency])
+            # append!(yfit, edb[!,:var_frequency])
             
             #/ Plot
             scatter!(
-                ax, μplot, σplot, markersize=4, strokewidth=.5,
-                color=colors[i], marker=markers[i] #, label=envname
+                ax, μplot, σplot, markersize=4, strokewidth=.4,
+                color=colors[i], strokecolor=:black, marker=markers[i] #, label=envname
             )
         else
             #/ Simply plot the raw means and variances
@@ -104,24 +110,34 @@ function plot_taylor(;
             σplot = edb[!,:var_frequency]
             #/ Plot
             scatter!(
-                ax, μplot, σplot, markersize=3, strokewidth=.5,
+                ax, μplot, σplot, markersize=3, strokewidth=.2,
                 color=colors[i], marker=markers[i], label=envname
             )
         end
     end
 
     #/ Plot (fitted) Taylor's law
+    afit, γfit = fit_taylor(xfit, yfit)
     xplot = exp10.(-9:3:0)
-    amean = mean(afit)
-    γmean = mean(γfit)
     powerlaw = lines!(
-        ax, xplot, σf(xplot,[amean,γmean]), linewidth=.8, color=:black
+        ax, xplot, σf(xplot,[afit,γfit]), linewidth=.8, color=:black
     )
-    label = L"\sigma^2 \propto \mu^{%$(round(γmean,digits=2))}"
+    label = L"\sigma^2 \propto \mu^{%$(round(γfit,digits=2))}"
+
+    #/ Plot Taylor's law with exponent γ=2.0
+    xfit = xfit .^ 2.0
+    a = sum(yfit ./ xfit) / length(yfit)
+    fixedpowerlaw = lines!(
+        ax, xplot, σf(xplot, [a, 2.0]), linestyle=:dash, color=:black, linewidth=.8
+    )
+    fixedlabel = L"\sigma^2 \propto \mu^2"
+
+    
     #~ Add legend
     axislegend(
-        ax, [powerlaw], [label], position=:lt, framevisible=false, labelsize=11,
-        patchsize=(5,1), padding=0, margin=(3,0,0,3), patchlabelgap=3,
+        ax, [powerlaw, fixedpowerlaw], [label, fixedlabel],
+        position=:lt, framevisible=false, labelsize=11,
+        patchsize=(9,1), padding=0, margin=(3,0,0,3), patchlabelgap=3,
     )
 
     #/ Resize and save (if desired)

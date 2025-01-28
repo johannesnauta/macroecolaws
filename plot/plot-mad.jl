@@ -19,7 +19,7 @@ using CSV, DataFrames, DataFramesMeta
 using FHist
 
 #~ Specify paths
-#!note: if these do not exist, create them 
+#!note: if these do not exist, create them
 const RDATAPATH = "../data/rdata/"
 const CSVDATAPATH = "../data/csv/"
 const JLDATAPATH = "../data/jld/"
