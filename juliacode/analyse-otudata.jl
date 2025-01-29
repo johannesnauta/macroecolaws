@@ -90,14 +90,15 @@ function analyse(;
                     if !dry
                         statsfname = CSVDATAPATH*"meanfrequencydata_$(env).csv"
                         CSV.write(statsfname, statsdb, delim=", ")
-                        # logfreqfname = CSVDATAPATH*"logfrequencydata_$(env).csv"
-                        # CSV.write(logfreqfname, logfreqdb, delim=", ")
+                        logfreqfname = CSVDATAPATH*"logfrequencydata_$(env).csv"
+                        __logfreqdb = DataFrames.select(logfreqdb, [:otu_id,:log_frequency])
+                        CSV.write(logfreqfname, __logfreqdb, delim=", ")
                     end
                 else
                     statsfname = CSVDATAPATH*"meanfrequencydata_$(env).csv"
                     statsdb = CSV.read(statsfname, DataFrame, delim=", ")
-                    # logfreqfname = CSVDATAPATH*"logfrequencydata_$(env).csv"
-                    # logfreqdb = CSV.read(logfreqfname, DataFrame, delim=", ")
+                    logfreqfname = CSVDATAPATH*"logfrequencydata_$(env).csv"
+                    logfreqdb = CSV.read(logfreqfname, DataFrame, delim=", ")
                 end
                 #/ if mad=true, compute the histogram of mean log frequencies
                 #!note: the relevant column is `:mean_log_frequency`
@@ -136,17 +137,21 @@ function analyse(;
             cutoff = only(@subset(cutoffsdb, :environmentname .== env)[!,:cutoff])
             freqdatafname = CSVDATAPATH*"frequencydata_$(env).csv"            
             if isfile(freqdatafname)
-                db = CSV.read(freqdatafname, DataFrame, delim=", ")
-                #/ Compute moments
-                logfreqs = db[!,:log_frequency]
-                μest, σest = Moments.fittrunclognormal(
-                    logfreqs; uguess = [mean(logfreqs), std(logfreqs)], lower=cutoff
-                )
-                # μest, σest = Moments.getestimates(logfreqs, c=cutoff)
-                _idx = findall(envstatsdb.environmentname.==env)[begin]
-                envstatsdb[_idx,:mu] = μest
-                envstatsdb[_idx,:sigma] = σest
-                envstatsdb[_idx,:cutoff] = cutoff
+                try 
+                    _idx = findall(envstatsdb.environmentname.==env)[begin]
+                    db = CSV.read(freqdatafname, DataFrame, delim=", ")
+                    #/ Compute moments
+                    logfreqs = db[!,:log_frequency]
+                    μest, σest = Moments.fittrunclognormal(
+                        logfreqs; uguess = [mean(logfreqs), std(logfreqs)], lower=cutoff
+                    )
+                    envstatsdb[_idx,:mu] = μest
+                    envstatsdb[_idx,:sigma] = σest
+                    envstatsdb[_idx,:cutoff] = cutoff
+                catch e
+                    println("frequency data exists but datafile is empty, skipping [$(env)]")
+                    continue
+                end
             end
         end
         envstatsdb = @subset(envstatsdb, :sigma .> 0.0, :cutoff .> -Inf)

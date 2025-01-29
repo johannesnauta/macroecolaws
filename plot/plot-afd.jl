@@ -18,7 +18,7 @@ using JLD2
 using CSV, DataFrames, DataFramesMeta
 using FHist
 
-using CurveFit, NonlinearSolve
+using NonlinearSolve
 
 #~ Specify paths
 #!note: if these do not exist, create them
@@ -34,7 +34,8 @@ const JLDATAPATH = "../data/jld/"
 """
 function plot_afd(;
     envstatsfname::String = CSVDATAPATH * "environmentstats.csv",
-    histdir::String = JLDATAPATH,
+    jlddir::String = JLDATAPATH,
+    compute_moments = true,
     savefig=false,
     figname=nothing
 )
@@ -62,19 +63,37 @@ function plot_afd(;
     edb = CSV.read(envstatsfname, DataFrame, delim=", ")
     #/ Filter envnames to include only those for which a histogram exists
     #~!note: these should total 9 distinct environments
-    edb = filter(row -> isfile(histdir*"afdfhist_$(row.environmentname).jld2"), edb)
+    edb = filter(row -> isfile(jlddir*"afdfhist_$(row.environmentname).jld2"), edb)
 
-    xfit = Float64[]
-    yfit = Float64[]
+    
+    #/ Compute and save moments if they do not exist, otherwise load them
+    if compute_moments
+        #~ Collect frequencies of all environments
+        freqs = Float64[]
+        for (i, envname) in enumerate(edb.environmentname)
+            filename = CSVDATAPATH * "logfrequencydata_$(envname).csv"
+            freqdb = CSV.read(filename, DataFrame, delim=", ")
+            append!(freqs, exp.(freqdb[!,:log_frequency]))
+        end
+        #~ Fit gamma distribution
+        gammafit = Distributions.fit(Gamma, freqs)
+        α, θ = params(gammafit)
+        jldsave(jlddir * "gammaparams.jld2"; α=α, θ=θ)
+    else
+        gammaparams = JLD2.load(jlddir * "gammaparams.jld2")
+        α, θ = gammaparams["α"], gammaparams["θ"]
+    end
+
+    #/ Plot fitted gamma distribution
+    xgamma = exp.(range(-7, 5, 16))
+    ygamma = xgamma .* Distributions.pdf.(Gamma(α,θ), xgamma)
+    gammaline = lines!(ax, log.(xgamma), ygamma, color=:black, linewidth=.8)
 
     for (i, envname) in enumerate(edb.environmentname)
         #/ Load histogram and normalize
-        fh = JLD2.load(histdir*"afdfhist_$(envname).jld2")["histogram"] |> normalize
+        fh = JLD2.load(jlddir*"afdfhist_$(envname).jld2")["histogram"] |> normalize
         #~ Compute x-values at which to plot
         xplot = (fh.binedges[begin][2:end] + fh.binedges[begin][1:end-1]) ./ 2
-
-        append!(xfit, exp.(xplot))
-        append!(yfit, fh.bincounts)
         
         #/ Plot
         scatter!(
@@ -83,7 +102,11 @@ function plot_afd(;
         )
     end
     
-    #/ Add legend
+    #/ Add legend(s)
+    axislegend(
+        ax, [gammaline], [L"\textrm{gamma}"], position=:lt, labelsize=9,
+        patchsize=(5,1), padding=0, margin=(2,0,0,2), framevisible=false
+    )
     Legend(
         fig[1,2], ax, labelsize=8, rowgap=0, patchsize=(2,2), framevisible=false
     )

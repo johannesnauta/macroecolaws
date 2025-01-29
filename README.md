@@ -2,7 +2,7 @@
 Repository to subtract macro-ecological laws from microbial abundance data.
 At its core it aims to reproduce the results presented in [Grilli, 2020](https://www.nature.com/articles/s41467-020-18529-y). That is, it analyses the data to obtain
 * a lognormal mean-abundance distribution (MAD)
-* [not-yet-implemented] a gamma abundance fluctuation distribution (AFD)
+* a gamma abundance fluctuation distribution (AFD)
 * Taylor's law $\sigma^2 \propto \mu^\gamma$
 
 The codebase contains both the raw data and a submodule that is the original code that accompanied the paper.
@@ -37,7 +37,8 @@ The main file to run is `juliacode/analyse-otudata.jl`, which (depending on the 
 - [`split=true`] splits the data into separated OTUs for each of the "environments" (here, an "environment" is a specific projectclassification; names for the environments are defined in `data/csv/environmentnames.csv`)
 - [`filter=true`] filters the split data by omitting entries which, for example, do not contain enough samples, counts, and or reads
 - [`compute=true`] computes the the statistics of the data (e.g., log mean abundance, variance, etc.)
-- [`histogram=true`] computes the histogram of the filtered data
+- [`mad=true`] computes the MAD from the (filtered) data
+- [`afd=true`] computes the AFD from the (filtered) data
 - [`moments=true`] computes estimates of the moments (of the lognormal distribution), using either maximum-likelihood estimation (as done in the paper), or by fitting a (truncated) lognormal distribution
 - [`dry=false`] if `true`, store the minimum no. of files (e.g., after splitting, nothing is stored, useful for debugging)
 
@@ -62,10 +63,15 @@ julia> using .OTUData
 julia> OTUData.analyse()
 ```
 
+### The plotting modules
+> [!NOTE]
+> These modules possibly rely on additional packages, such as `ElectronDisplay.jl` in order for the plots to be shown
+  
+- for plotting the MAD and (fitted) lognormal distribution(s), see `plot/plot-mad.jl`
+- for plotting the AFD and (fitted) gamma distribution(s), see `plot/plot-afd.jl`
+- for plotting Taylor's law, see `plot/plot-taylor.jl`
+
 ### Other modules
-For plotting, see
-- for plotting the lognormal distribution(s), see `plot/plot-mad.jl`
-    - note that this module possibly relies on additional packages, such as `ElectronDisplay.jl` in order for the plots to be shown
 - [...]
 
 
