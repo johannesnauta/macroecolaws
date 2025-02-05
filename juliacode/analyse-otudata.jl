@@ -4,7 +4,7 @@
 
 #!note; assumes a directory tree as;
 ├── data
-	 ├── csv
+   ├── csv
    ├── jld
    └── rdata
 ├── juliacode
@@ -299,11 +299,9 @@ function compute_rescaledlogfrequencies(fdb::DataFrame; cutoff = -100.0)
     db = DataFrames.leftjoin(db, summarydb, on=:otu_id)
     db = @chain db begin
         @transform(:log_frequency = (:log_frequency.-:mean_logfrequency)./:std_logfrequency)
+        #~ Omit (log) frequencies that are NaN and/or missing
         @transform(:log_frequency = coalesce.(:log_frequency, -Inf))
-        @subset(:log_frequency .> -Inf)
-        # @transform(:frequency = DataFrames.coalesce.(:frequency, -Inf))
-        # @subset(:frequency .> -Inf)
-        # @transform(:log_frequency = log.(:frequency))
+        @subset(:log_frequency .> -Inf, :log_frequency .< Inf)
         @subset(:log_frequency .> cutoff)
     end
     return db
