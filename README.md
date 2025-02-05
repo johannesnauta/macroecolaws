@@ -45,7 +45,7 @@ The main file to run is `juliacode/analyse-otudata.jl`, which (depending on the 
 All paths are relative paths and the script assumes a directory tree as in this repository, which is
 ```bash 
 ├── data
-	 ├── csv
+   ├── csv
    ├── jld
    └── rdata
 ├── juliacode
