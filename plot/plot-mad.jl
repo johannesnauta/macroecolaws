@@ -59,11 +59,9 @@ function plot_mad(;
 
     #/ Load environment names
     edb = CSV.read(envstatsfname, DataFrame, delim=", ")
-    @info "hm" edb edb.environmentname
     #/ Filter envnames to include only those for which a histogram exists
     #~!note: these should total 9 distinct environments
     edb = filter(row -> isfile(histdir*"meanfhist_$(row.environmentname).jld2"), edb)
-    @info "check" edb.environmentname
 
     for (i, envname) in enumerate(edb.environmentname)
         #/ Load histogram and normalize
