@@ -48,7 +48,7 @@ function plot_mad(;
         xlabel=L"\textrm{rescaled\;log\;abundances}", ylabel=L"\textrm{pdf}",
         xlabelsize=12, ylabelsize=12,
         yscale=log10, yminorticksvisible=false,
-        xticklabelsize=9, yticklabelsize=9
+        xticklabelsize=8, yticklabelsize=8
     )
     #/ Specify colors 
     colors = CairoMakie.to_colormap(:tab10)
@@ -59,13 +59,15 @@ function plot_mad(;
 
     #/ Load environment names
     edb = CSV.read(envstatsfname, DataFrame, delim=", ")
+    @info "hm" edb edb.environmentname
     #/ Filter envnames to include only those for which a histogram exists
     #~!note: these should total 9 distinct environments
-    edb = filter(row -> isfile(histdir*"fhist_$(row.environmentname).jld2"), edb)
+    edb = filter(row -> isfile(histdir*"meanfhist_$(row.environmentname).jld2"), edb)
+    @info "check" edb.environmentname
 
     for (i, envname) in enumerate(edb.environmentname)
         #/ Load histogram and normalize
-        fh = JLD2.load(histdir*"fhist_$(envname).jld2")["histogram"] |> normalize
+        fh = JLD2.load(histdir*"meanfhist_$(envname).jld2")["histogram"] |> normalize
         #~ Compute x-values at which to plot
         xplot = (fh.binedges[begin][2:end] + fh.binedges[begin][1:end-1]) ./ 2
         xpdf = range(-5,5,250)
