@@ -62,7 +62,9 @@ function plot_taylor(;
     db = CSV.read(envstatsfname, DataFrame, delim=", ")    
     #/ Filter envnames to include only those for which a histogram exists
     #~!note: these should total 9 distinct environments
-    db = filter(row -> isfile(freqdatadirname*"frequencydata_$(row.environmentname).csv"), db)
+    _isfile(envname) = isfile(freqdatadirname*"meanfrequencydata_$(envname).csv")
+    db = filter(row -> _isfile(row.environmentname), db)
+    @info "hm" db
 
     #/ Def. Taylor's law
     σf(μ, a) = @. a[1] * μ^a[2]
@@ -74,16 +76,16 @@ function plot_taylor(;
 
     for (i, envname) in enumerate(db.environmentname)
         #/ Load relative frequency data
-        fname = freqdatadirname * "/frequencydata_$(envname).csv"
+        fname = freqdatadirname * "meanfrequencydata_$(envname).csv"
         edb = CSV.read(fname, DataFrame, delim=", ")
 
         if !raw
             #/ Do some operations to 'bin' the frequencies as not to crowd the plot
             #  with individual scatter points
             #~ Bin using the `CategoricalArrays.cut`-function
-            logmin, logmax = extrema(edb[!,:log_frequency])
+            logmin, logmax = extrema(edb[!,:mean_log_frequency])
             bins = range(logmin, logmax, nbins)
-            edb[!,:bin] = cut(edb[!,:log_frequency], bins, extend=true)
+            edb[!,:bin] = cut(edb[!,:mean_log_frequency], bins, extend=true)
             #~ Compute the mean of the variance for each of the bins
             bdb = @chain edb begin
                 @by(:bin, :mean_variance = Statistics.mean(:var_frequency))
@@ -91,6 +93,8 @@ function plot_taylor(;
             #~ Compute x and y for plotting
             μplot = exp.(collect(bins)[1:end-1] .+ diff(bins))
             σplot = bdb[!,:mean_variance]
+
+            @info "hmm" μplot σplot
             
             #/ Estimate params Taylor's law, and store for later
             # afit[i], γfit[i] = fit_taylor(edb)

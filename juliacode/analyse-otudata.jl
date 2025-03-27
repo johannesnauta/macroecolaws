@@ -47,6 +47,7 @@ function analyse(;
     split=true,     #~ Flag to split raw data into environment-specific data
     filter=true,    #~ Flag to filter raw data based on counts, reads, etc.
     compute=true,   #~ Flag to compute statistics (mean, var, etc.) from (filtered) data
+    sad=true,       #~ Flag to compute histogram of abundances of (filtered) data
     mad=true,       #~ Flag to compute histogram of mean abundances of (filtered) data
     afd=true,       #~ Flag to compute histogram of abundance fluctuations of (filtered) data
     moments=true,   #~ Flag to compute estimates of moments of (filtered) data
@@ -85,35 +86,56 @@ function analyse(;
                     #/ Compute statistics
                     cutoff = only(@subset(cutoffsdb, :environmentname .== env)[!,:cutoff])
                     statsdb = compute_summarystatistics(edb, cutoff=cutoff)
-                    logfreqdb = compute_rescaledlogfrequencies(edb, cutoff=cutoff)
+                    logfreqdb = compute_logfrequencies(edb, cutoff=cutoff)
+                    rescaledlogfreqdb = compute_rescaledlogfrequencies(edb, cutoff=cutoff)
                     #/ Save
                     if !dry
                         statsfname = CSVDATAPATH*"meanfrequencydata_$(env).csv"
                         CSV.write(statsfname, statsdb, delim=", ")
-                        logfreqfname = CSVDATAPATH*"logfrequencydata_$(env).csv"
-                        __logfreqdb = DataFrames.select(logfreqdb, [:otu_id,:log_frequency])
+                        logfreqfname = CSVDATAPATH * "logfrequencydata_$(env).csv"
+                        rescaledlogfreqfname = CSVDATAPATH *
+                                               "rescaledlogfrequencydata_$(env).csv"
+                        #~ write unscaled frequencies
+                        __logfreqdb =
+                            DataFrames.select(logfreqdb, [:otu_id,:log_frequency])
                         CSV.write(logfreqfname, __logfreqdb, delim=", ")
+                        #~ write rescaled frequencies
+                        __rescaledlogfreqdb =
+                            DataFrames.select(rescaledlogfreqdb, [:otu_id,:log_frequency])
+                        CSV.write(rescaledlogfreqfname, __rescaledlogfreqdb, delim=", ")
                     end
                 else
                     statsfname = CSVDATAPATH*"meanfrequencydata_$(env).csv"
                     statsdb = CSV.read(statsfname, DataFrame, delim=", ")
                     logfreqfname = CSVDATAPATH*"logfrequencydata_$(env).csv"
-                    logfreqdb = CSV.read(logfreqfname, DataFrame, delim=", ")
+                    rescaledlogfreqfname = CSVDATAPATH*"rescaledlogfrequencydata_$(env).csv"
+                    rescaledlogfreqdb = CSV.read(rescaledlogfreqfname, DataFrame, delim=", ")
                 end
+                #/ if sad=true, compute the histogram of the abundance distribution
+                #  without taking into account the mean across samples
+                #!note: the relevant database is
+                #!note: the relevant column is `:log_frequency`
+                if sad
+                    fh = Histogram.compute_fhist(logfreqdb[!,:log_frequency])
+                    if !dry
+                        JLD2.jldsave(JLDATAPATH * "sadfhist_$(env).jld2"; histogram=fh)
+                    end
+                end
+                #@TODO IMPLEMENT THIS
                 #/ if mad=true, compute the histogram of mean log frequencies
                 #!note: the relevant column is `:mean_log_frequency`
                 if mad
                     #/ Compute histogram
                     fh = Histogram.compute_fhist(statsdb[!,:mean_log_frequency])
                     if !dry
-                        JLD2.jldsave(JLDATAPATH * "meanfhist_$(env).jld2"; histogram = fh)
+                        JLD2.jldsave(JLDATAPATH * "madfhist_$(env).jld2"; histogram = fh)
                     end
                 end
                 #/ if afd=true, compute the histogram of log frequencies accross samples
                 #!Note: the relevant column is `:log_frequency`
                 if afd
                     #/ Compute histogram
-                    fh = Histogram.compute_fhist(logfreqdb[!,:log_frequency])
+                    fh = Histogram.compute_fhist(rescaledlogfreqdb[!,:log_frequency])
                     if !dry
                         JLD2.jldsave(JLDATAPATH * "afdfhist_$(env).jld2"; histogram = fh)
                     end
@@ -232,6 +254,35 @@ function filter_data(db::DataFrame;
 end
 
 """
+Compute log frequencies (relative abundances) across communities (samples)
+
+!note: Simply aggregates all frequencies into a single distribution without rescaling       
+!note: Assumes that the frequency (relative abundance) is defined as #count/#totalreads
+"""
+function compute_logfrequencies(fdb::DataFrame; cutoff = -100.0)
+	  #/ Compute the total number of runs/samples for the specific environment
+    nruns = length(unique(fdb[!,:run_id]))
+    #/ Chain multiple dataframe operations to compute the rescaled log frequency
+    #~ rescaled log frequency = log((x - μ)/σ)
+    db = @chain fdb begin
+        #~ Compute frequencies
+        @transform(:frequency = :count ./ :nreads)
+        @transform(:log_frequency = log.(:frequency))
+        @subset(:log_frequency .> cutoff)
+        @select(:otu_id, :sample_id, :run_id, :log_frequency)
+    end
+
+    db = @chain db begin
+        #~ Omit (log) frequencies that are NaN and/or missing
+        @transform(:log_frequency = coalesce.(:log_frequency, -Inf))
+        @subset(:log_frequency .> -Inf, :log_frequency .< Inf)
+        @subset(:log_frequency .> cutoff)
+    end
+
+    return db
+end
+
+"""
 Compute statistics for a specific filtered dataframe
 
 !note: Assumes that the frequency is defined as #count/#totalreads
@@ -294,11 +345,11 @@ function compute_rescaledlogfrequencies(fdb::DataFrame; cutoff = -100.0)
         @select(:otu_id, :mean_logfrequency, :std_logfrequency)
     end
 
-    # #/ Rescale the log frequency by the summary statistics
-    # #!note: `missing` values are propagated and need to be filtered out
+    #/ Rescale the log frequency by the summary statistics
+    #!note: `missing` values are propagated and need to be filtered out
     db = DataFrames.leftjoin(db, summarydb, on=:otu_id)
     db = @chain db begin
-        @transform(:log_frequency = (:log_frequency.-:mean_logfrequency)./:std_logfrequency)
+        @transform(:log_frequency = (:log_frequency.-:mean_logfrequency)./:std_logfrequency) 
         #~ Omit (log) frequencies that are NaN and/or missing
         @transform(:log_frequency = coalesce.(:log_frequency, -Inf))
         @subset(:log_frequency .> -Inf, :log_frequency .< Inf)

@@ -44,7 +44,7 @@ function plot_mad(;
     )
     ax = Axis(
         fig[1,1],
-        limits=(-6,6,1e-4,1e1),
+        limits=(-6,6,1e-4,1e0),
         xlabel=L"\textrm{rescaled\;log\;abundances}", ylabel=L"\textrm{pdf}",
         xlabelsize=12, ylabelsize=12,
         yscale=log10, yminorticksvisible=false,
@@ -61,11 +61,11 @@ function plot_mad(;
     edb = CSV.read(envstatsfname, DataFrame, delim=", ")
     #/ Filter envnames to include only those for which a histogram exists
     #~!note: these should total 9 distinct environments
-    edb = filter(row -> isfile(histdir*"meanfhist_$(row.environmentname).jld2"), edb)
+    edb = filter(row -> isfile(histdir*"madfhist_$(row.environmentname).jld2"), edb)
 
     for (i, envname) in enumerate(edb.environmentname)
         #/ Load histogram and normalize
-        fh = JLD2.load(histdir*"meanfhist_$(envname).jld2")["histogram"] |> normalize
+        fh = JLD2.load(histdir*"madfhist_$(envname).jld2")["histogram"] |> normalize
         #~ Compute x-values at which to plot
         xplot = (fh.binedges[begin][2:end] + fh.binedges[begin][1:end-1]) ./ 2
         xpdf = range(-5,5,250)
@@ -143,7 +143,7 @@ function plot_mads(;
     db = CSV.read(envstatsfname, DataFrame, delim=", ")
     #/ Filter envnames to include only those for which a histogram exists
     #~!note: these should total 9 distinct environments
-    db = filter(row -> isfile(histdir*"fhist_$(row.environmentname).jld2"), db)
+    db = filter(row -> isfile(histdir*"madfhist_$(row.environmentname).jld2"), db)
 
     ax = [Axis(
         fig[i,j],
@@ -161,7 +161,7 @@ function plot_mads(;
     xpdf = range(-20,5,250)
     for (i, envname) in enumerate(db.environmentname)
         #/ Load histogram
-        fh = JLD2.load(histdir*"fhist_$(envname).jld2")["histogram"] |> normalize
+        fh = JLD2.load(histdir*"madfhist_$(envname).jld2")["histogram"] |> normalize
         
         #/ Compute grid indices
         gi = (i-1) ÷ 3 + 1
