@@ -1,0 +1,9 @@
+host_id, samplesite, environmentname
+M3, Tongue, M_tongue
+M3, feces, M_feces
+M3, R_palm, M_rightpalm
+M3, L_palm, M_leftpalm
+F4, Tongue, F_tongue
+F4, feces, F_feces
+F4, R_palm, F_rightpalm
+F4, L_palm, F_leftpalm
