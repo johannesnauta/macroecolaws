@@ -13,6 +13,7 @@ using LaTeXStrings
 using Distributions
 using Statistics
 using SpecialFunctions
+using Random
 
 using JLD2
 using CSV, DataFrames, DataFramesMeta
@@ -126,8 +127,6 @@ function plot_mads(;
     prefix::String = "longitudinal/",
     envstatsfname::String = CSVDATAPATH * prefix * "environmentstats.csv",
     histdir::String = JLDATAPATH * prefix,
-    # envstatsfname::String = CSVDATAPATH * "environmentstats.csv",
-    # histdir::String = JLDATAPATH,
     rescale = false,
     savefig=false, figname=nothing
 )
@@ -198,6 +197,93 @@ function plot_mads(;
     colgap!(fig.layout, 10)
     resize_to_layout!(fig)
     (savefig && !isnothing(figname)) && (CairoMakie.save(figname, fig, pt_per_unit=1))
+    return fig
+end
+
+"""
+    Plot the MAD by sampling from the estimated AFD Gamma distributions
+
+!note: currently only implemented for the longitudinal dataset
+"""
+function plot_madfromafd(;
+    nbins::Int = 15,
+    prefix::String = "longitudinal/",
+    envstatsfname::String = CSVDATAPATH * prefix * "environmentstats.csv",
+    distfitdir::String = CSVDATAPATH * prefix,
+    rescale=false,
+    savefig=false,
+    figname=nothing
+)
+    #/ Create figure
+    width = .85 * 246
+    fig = Figure(;
+        size=(width,width/1.67), figure_padding=(2,2,2,6), backgroundcolor=:transparent
+    )
+    ax = Axis(
+        fig[1,1],
+        limits=(-5,5,1e-3,1e1),
+        xlabel=L"\textrm{mean\;log\;abundances}", ylabel=L"\textrm{pdf}",
+        xlabelsize=12, ylabelsize=12,
+        yscale=log10, yminorticksvisible=false,
+        xticklabelsize=8, yticklabelsize=8
+    )
+    
+    #/ Specify colors 
+    colors = CairoMakie.to_colormap(:tab10)
+    markers = [
+        :circle, :utriangle, :cross, :rect, :diamond,
+        :dtriangle, :pentagon, :xcross, :hexagon, :rtriangle
+    ]
+    
+    #/ Load environment names
+    db = CSV.read(envstatsfname, DataFrame, delim=", ")
+    #/ Filter envnames to include only those for which distributions were fitted
+    db = filter(row -> isfile(distfitdir*"distfitdata_$(row.environmentname).csv"), db)
+
+    for (i, envname) in enumerate(db.environmentname)
+        #/ Load parameters of MLE for each OTU
+        fitdb = CSV.read(distfitdir * "distfitdata_$(envname).csv", DataFrame, delim=", ")
+        #~ For each of the OTUs, create a distribution object, and use it to sample
+        fitdb = @transform(fitdb, :log_mean_frequency = log.(:scale .* :shape))
+        #~ Plot the distribution over means
+        bmin, bmax = extrema(fitdb.log_mean_frequency)
+        binedges = range(bmin, stop=bmax, length=nbins)
+        fh = FHist.Hist1D(fitdb.log_mean_frequency, binedges=binedges, overflow=true)
+        fh = fh |> FHist.normalize
+
+        xplot = (fh.binedges[begin][2:end] + fh.binedges[begin][1:end-1]) ./ 2
+        #~ Plot
+        if rescale
+            mlefit = Distributions.fit_mle(Normal, fitdb.log_mean_frequency)
+            if i == 1
+                xpdf = range(-5, 5, 256)
+                standardnormal = Normal(0, 1)
+                lines!(
+                    ax, xpdf, xpdf -> Distributions.pdf(standardnormal,xpdf),
+                    color=:black, linewidth=.8
+                )
+            end
+            xplot = @. (xplot - mlefit.μ) / mlefit.σ
+            yplot = fh.bincounts .* mlefit.σ
+            @info "hm" xplot yplot
+            scatter!(
+                ax, xplot, yplot, markersize=3, strokewidth=.5,
+                color=colors[i], marker=markers[i], label=envname
+            )
+        else
+            scatter!(
+                ax, xplot, fh.bincounts, markersize=3, strokewidth=.5,
+                color=colors[i], marker=markers[i], label=envname
+            )
+        end
+    end
+
+    #/ Add legend
+    Legend(
+        fig[1,2], ax, labelsize=8, rowgap=0, patchsize=(2,2), framevisible=false
+    )
+    colgap!(fig.layout, 1)
+    resize_to_layout!(fig)
     return fig
 end
 

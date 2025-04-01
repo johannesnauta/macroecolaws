@@ -24,7 +24,7 @@ module lOTUData
 using CSV, JLD2
 using RData
 using Chain, DataFrames, DataFramesMeta
-using Statistics
+using Distributions, Statistics
 
 #/ Local packages
 include("compute-histogram.jl")
@@ -50,6 +50,7 @@ function analyse(;
     mad=true,       #~ Flag to compute histogram of mean abundances of (filtered) data
     afd=true,       #~ Flag to compute histogram of abundance fluctuations of (filtered) data
     moments=true,   #~ Flag to compute estimates of moments of (filtered) data
+    fitparams=true, #~ Flag to individual parameters for the (log) frequency distribution(s)
     dry=false       #~ Flag for a 'dry' run, wherein nothing is saved (may break things)
 )
     #/ Load and split data
@@ -102,7 +103,7 @@ function analyse(;
                         )
                         CSV.write(logfreqfname, __logfreqdb, delim=", ")
                         #~ write rescaled frequencies
-                        __rescaledlogfreqdb =DataFrames.select(rescaledlogfreqdb,
+                        __rescaledlogfreqdb = DataFrames.select(rescaledlogfreqdb,
                             [:otu_id,:experiment_day,:log_frequency]
                         )
                         CSV.write(rescaledlogfreqfname, __rescaledlogfreqdb, delim=", ")
@@ -131,6 +132,14 @@ function analyse(;
                     if !dry
                         JLD2.jldsave(JLDATAPATH * "afdfhist_$(env).jld2"; histogram = fh)
                     end
+                end
+                #/ if fitparams=true, compute the parameters of the distribution for each
+                #  of the OTUs that have enough datapoints
+                #!note: assumes that the distribution is a Gamma distribution by default
+                if fitparams
+                    fitdb = compute_shapescale(logfreqdb)
+                    distfitfname = CSVDATAPATH * "distfitdata_$(env).csv"
+                    CSV.write(distfitfname, fitdb, delim=", ")
                 end
             end
         else
@@ -256,33 +265,6 @@ function filter_data(db::DataFrame;
 end
 
 """
-Compute log frequencies (relative abundances) across communities (samples)
-
-!note: Simply aggregates all frequencies into a single distribution without rescaling       
-!note: Assumes that the frequency (relative abundance) is defined as #count/#totalreads
-"""
-function compute_logfrequencies(fdb::DataFrame; cutoff = -100.0)
-	  #/ Compute the total number of runs/samples for the specific environment
-    nruns = length(unique(fdb[!,:run_id]))
-    #/ Chain multiple dataframe operations to compute the log frequency
-    db = @chain fdb begin
-        #~ Compute frequencies
-        @transform(:frequency = :count ./ :nreads)
-        @transform(:log_frequency = log.(:frequency))
-        @subset(:log_frequency .> cutoff)
-        @select(:otu_id, :sample_id, :run_id, :experiment_day, :log_frequency)
-    end
-
-    db = @chain db begin
-        #~ Omit (log) frequencies that are NaN and/or missing
-        @transform(:log_frequency = coalesce.(:log_frequency, -Inf))
-        @subset(:log_frequency .> -Inf, :log_frequency .< Inf)
-        @subset(:log_frequency .> cutoff)
-    end
-    return db
-end
-
-"""
 Compute statistics for a specific filtered dataframe
 
 !note: Assumes that the frequency is defined as #count/#totalreads
@@ -314,6 +296,33 @@ function compute_summarystatistics(fdb::DataFrame; cutoff::Float64 = -100.0)
         @subset(:mean_log_frequency .> cutoff, :var_frequency .> 0.0)
     end
     return statsdb
+end
+
+"""
+Compute log frequencies (relative abundances) across communities (samples)
+
+!note: Simply aggregates all frequencies into a single distribution without rescaling       
+!note: Assumes that the frequency (relative abundance) is defined as #count/#totalreads
+"""
+function compute_logfrequencies(fdb::DataFrame; cutoff = -100.0)
+	  #/ Compute the total number of runs/samples for the specific environment
+    nruns = length(unique(fdb[!,:run_id]))
+    #/ Chain multiple dataframe operations to compute the log frequency
+    db = @chain fdb begin
+        #~ Compute frequencies
+        @transform(:frequency = :count ./ :nreads)
+        @transform(:log_frequency = log.(:frequency))
+        @subset(:log_frequency .> cutoff)
+        @select(:otu_id, :sample_id, :run_id, :experiment_day, :log_frequency)
+    end
+
+    db = @chain db begin
+        #~ Omit (log) frequencies that are NaN and/or missing
+        @transform(:log_frequency = coalesce.(:log_frequency, -Inf))
+        @subset(:log_frequency .> -Inf, :log_frequency .< Inf)
+        @subset(:log_frequency .> cutoff)
+    end
+    return db
 end
 
 """
@@ -356,6 +365,29 @@ function compute_rescaledlogfrequencies(fdb::DataFrame; cutoff = -100.0)
         @subset(:log_frequency .> cutoff)
     end
     return db
+end
+
+"""
+Compute shape and scale parameters of OTUs with at least a specific number of days sampled
+"""
+function compute_shapescale(fdb::DataFrame; mindays::Int = 30, dist=Distributions.Gamma)
+    #~ Compute the total no. of days that the OTU was measured
+    daydb = @chain fdb begin
+        @by(:otu_id, :ndays = length(unique(:experiment_day)))
+        @subset(:ndays .> mindays)
+    end
+    fdb = rightjoin(fdb, daydb, on=:otu_id)
+
+    #~ For each otu_id, fit a Gamma distribution and collect the shape and scale parameters
+    pdb = @chain fdb begin
+        @transform(:frequency = exp10.(:log_frequency))
+        @groupby(:otu_id)
+        @combine(:mlefit = Distributions.fit_mle(dist, :frequency))
+        #~ extract the scale and the shape from the params tuple
+        @transform(:shape = first.(params.(:mlefit)), :scale = last.(params.(:mlefit)))
+        @select(:otu_id, :shape, :scale)
+    end
+    return pdb
 end
 
 end # module OTUData
