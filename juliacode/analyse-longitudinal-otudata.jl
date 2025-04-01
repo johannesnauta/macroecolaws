@@ -149,13 +149,13 @@ function analyse(;
         end
         for (i,env) in enumerate(envnamesdb.environmentname)
             cutoff = only(@subset(cutoffsdb, :environmentname .== env)[!,:cutoff])
-            freqdatafname = CSVDATAPATH*"logfrequencydata_$(env).csv"
+            freqdatafname = CSVDATAPATH*"meanfrequencydata_$(env).csv"
             if isfile(freqdatafname)
                 try
                     _idx = findall(envstatsdb.environmentname.==env)[begin]
                     db = CSV.read(freqdatafname, DataFrame, delim=", ")                    
                     #/ Compute moments
-                    logfreqs = db[!,:log_frequency]
+                    logfreqs = db[!,:mean_log_frequency]
                     μest, σest = Moments.fittrunclognormal(
                         logfreqs; uguess = [mean(logfreqs), std(logfreqs)], lower=cutoff
                     )

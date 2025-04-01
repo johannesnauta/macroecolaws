@@ -134,7 +134,7 @@ function plot_mads(;
     #/ Create figure
     width = 1.5 * 246
     fig = Figure(;
-        size=(width,width/1.87), figure_padding=(2,8,2,2), backgroundcolor=:transparent
+        size=(width,width/2.33), figure_padding=(2,8,2,2), backgroundcolor=:transparent
     )
     #/ Specify colors 
     colors = CairoMakie.to_colormap(:tab10)
@@ -149,18 +149,20 @@ function plot_mads(;
     #~!note: these should total 9 distinct environments
     db = filter(row -> isfile(histdir*"madfhist_$(row.environmentname).jld2"), db)
 
-    axsize = prefix == "crossectional/" ? (3, 3) : (2, 4)
+    axidx = prefix == "crossectional/" ? (3, 3) : (2, 4)
+    axidx = LinearIndices(axidx)
+    caxidx = CartesianIndices(axidx)
     ax = [Axis(
         fig[i,j],
-        title=L"\textrm{%$(db.environmentname[3*(i-1)+j])}", titlesize=9, titlegap=1,
-        xlabel=L"\textrm{log\;abundances}", xlabelvisible=(i==3),
+        title=L"\textrm{%$(db.environmentname[axidx[i,j]])}", titlesize=9, titlegap=1,
+        xlabel=L"\textrm{log\;abundances}", xlabelvisible=(i==2),
         ylabel=L"\textrm{pdf}", ylabelvisible=(j==1),
         xlabelsize=10, ylabelsize=10,
         yscale=log10, yminorticksvisible=false,
-        xticklabelsvisible=(i==3), yticklabelsvisible=(j==1),
-        limits=(-25,0,1e-3,1e0),
+        xticklabelsvisible=(i==2), yticklabelsvisible=(j==1),
+        limits = prefix == "longitudinal/" ? (-15,0,1e-4,1.5e0) : (-25,0,1e-3,1e0),
         xticklabelsize=7, yticklabelsize=7,
-    ) for i in 1:3, j in 1:3]
+    ) for i in 1:2, j in 1:4]
     
     # #~ Plot
     xpdf = range(-20,5,250)
@@ -169,14 +171,7 @@ function plot_mads(;
         fh = JLD2.load(histdir*"madfhist_$(envname).jld2")["histogram"] |> normalize
         
         #/ Compute grid indices
-        if prefix == "crosssectional/"
-            gi = (i - 1) ÷ 3 + 1
-            gj = mod1(i, 3)
-        else
-            gi = (i-1) ÷ 4 + 1
-            gj = mod1(i,4)
-        end
-        
+        gi, gj = Tuple(caxidx[i])        
         c = only(db[db.environmentname .== envname, :cutoff])
         xplot = (fh.binedges[begin][2:end] + fh.binedges[begin][1:end-1]) ./ 2
 

@@ -33,8 +33,9 @@ const JLDATAPATH = "../data/jld/"
     Aggregates all environments into a single plot
 """
 function plot_afd(;
-    envstatsfname::String = CSVDATAPATH * "environmentstats.csv",
-    jlddir::String = JLDATAPATH,
+    prefix::String = "longitudinal/",
+    envstatsfname::String = CSVDATAPATH * prefix * "environmentstats.csv",
+    jlddir::String = JLDATAPATH * prefix,
     compute_moments = true,
     savefig=false,
     figname=nothing
@@ -71,7 +72,7 @@ function plot_afd(;
         #~ Collect frequencies of all environments
         freqs = Float64[]
         for (i, envname) in enumerate(edb.environmentname)
-            filename = CSVDATAPATH * "rescaledlogfrequencydata_$(envname).csv"
+            filename = CSVDATAPATH * prefix * "rescaledlogfrequencydata_$(envname).csv"
             freqdb = CSV.read(filename, DataFrame, delim=", ")
             append!(freqs, exp.(freqdb[!,:log_frequency]))
         end
