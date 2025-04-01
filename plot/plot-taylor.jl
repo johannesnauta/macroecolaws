@@ -30,7 +30,8 @@ const JLDATAPATH = "../data/jld/"
     Aggregates all environments into a single plot
 """
 function plot_taylor(;
-    envstatsfname::String = CSVDATAPATH * "environmentstats.csv",
+    prefix::String = "longitudinal/",
+    envstatsfname::String = CSVDATAPATH * prefix * "environmentstats.csv",
     nbins::Int = 15, raw=false, γ=2.0,
     freqdatadirname::String = dirname(envstatsfname) * "/",
     savefig=false, figname=nothing
@@ -64,7 +65,6 @@ function plot_taylor(;
     #~!note: these should total 9 distinct environments
     _isfile(envname) = isfile(freqdatadirname*"meanfrequencydata_$(envname).csv")
     db = filter(row -> _isfile(row.environmentname), db)
-    @info "hm" db
 
     #/ Def. Taylor's law
     σf(μ, a) = @. a[1] * μ^a[2]
@@ -86,26 +86,26 @@ function plot_taylor(;
             logmin, logmax = extrema(edb[!,:mean_log_frequency])
             bins = range(logmin, logmax, nbins)
             edb[!,:bin] = cut(edb[!,:mean_log_frequency], bins, extend=true)
-            #~ Compute the mean of the variance for each of the bins
+            #/ Ensure all bins exist by adding them manually
+            bindb = DataFrame(bin = categorical(levels(edb[!,:bin])))
+
+            #~ Compute the mean of the variance for each bin
             bdb = @chain edb begin
                 @by(:bin, :mean_variance = Statistics.mean(:var_frequency))
             end
-            #~ Compute x and y for plotting
-            μplot = exp.(collect(bins)[1:end-1] .+ diff(bins))
+            bdb = rightjoin(bdb, bindb, on=:bin)
+            μplot = exp.(bins[1:end-1] .+ diff(bins))  #~ should be the midpoints of bdb.bin
             σplot = bdb[!,:mean_variance]
-
-            @info "hmm" μplot σplot
+            #/ Filter out bins who have missing entries
+            _idx = findall(!ismissing, σplot)
             
             #/ Estimate params Taylor's law, and store for later
-            # afit[i], γfit[i] = fit_taylor(edb)
-            append!(xfit, μplot)
-            append!(yfit, σplot)
-            # append!(xfit, edb[!,:mean_frequency])
-            # append!(yfit, edb[!,:var_frequency])
+            append!(xfit, μplot[_idx])
+            append!(yfit, σplot[_idx])
             
             #/ Plot
             scatter!(
-                ax, μplot, σplot, markersize=4, strokewidth=.4,
+                ax, μplot[_idx], σplot[_idx], markersize=4, strokewidth=.4,
                 color=colors[i], strokecolor=:black, marker=markers[i] #, label=envname
             )
         else
