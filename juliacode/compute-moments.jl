@@ -39,16 +39,18 @@ end
 
 
 """Compute moments of a truncated lognormal distribution"""
-function fittrunclognormal(samples; uguess = [0.0, 1.0], lower=-Inf, upper=Inf)
+function fittrunclognormal(samples; uguess = [-10.0, 1.0], lower=-Inf, upper=Inf)
     #/ Fit a truncated lognormal distribution
     function truncnormlikelihood(p, data)
         μ, σ = p
-        p = truncated(Normal(μ,sqrt(σ^2)), lower=lower, upper=upper)
+        p = truncated(Normal(μ,σ), lower=lower, upper=upper)
         return -sum(logpdf.(p, data))
     end
 
     result = Optim.optimize(x -> truncnormlikelihood(x, samples), uguess, Optim.NelderMead())
-    return Optim.minimizer(result)
+    (Optim.converged(result)) && (return Optim.minimizer(result))
+    @info "Optimizer not converged, returning guesses"
+    return uguess
 end
 
 end # module Moments

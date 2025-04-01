@@ -18,13 +18,13 @@ significantly, the `const` paths should be changed accordingly.
 #!note; for plotting the data, see `plot-mad.jl`
 =#
 #/ Start module
-module OTUData
+module lOTUData
 
 #/ Packages
 using CSV, JLD2
 using RData
 using Chain, DataFrames, DataFramesMeta
-using Distributions, Statistics
+using Statistics
 
 #/ Local packages
 include("compute-histogram.jl")
@@ -35,31 +35,31 @@ using .Moments
 #~ Specify paths
 #!note: if these do not exist, create them 
 const RDATAPATH = "../data/rdata/"
-const CSVDATAPATH = "../data/csv/crosssectional/"
-const JLDATAPATH = "../data/jld/crosssectional/"
+const CSVDATAPATH = "../data/csv/longitudinal/"
+const JLDATAPATH = "../data/jld/longitudinal/"
 map(mkpath, [RDATAPATH, CSVDATAPATH, JLDATAPATH])
 
 #################
 ### FUNCTIONS ###
 "Load, split and filter data, and afterwards compute statistics for each environment"
 function analyse(;
-    rdatafilename = RDATAPATH*"crosssecdata.RData",
+    rdatafilename = RDATAPATH*"longitudinal.RData",
     split=true,     #~ Flag to split raw data into environment-specific data
     filter=true,    #~ Flag to filter raw data based on counts, reads, etc.
     compute=true,   #~ Flag to compute statistics (mean, var, etc.) from (filtered) data
-    sad=true,       #~ Flag to compute histogram of abundances of (filtered) data
     mad=true,       #~ Flag to compute histogram of mean abundances of (filtered) data
     afd=true,       #~ Flag to compute histogram of abundance fluctuations of (filtered) data
     moments=true,   #~ Flag to compute estimates of moments of (filtered) data
     dry=false       #~ Flag for a 'dry' run, wherein nothing is saved (may break things)
 )
     #/ Load and split data
-    if split 
+    if split
+        # return load_data(; rdatafilename=rdatafilename)
         envnamesdb = split_data(load_data(; rdatafilename=rdatafilename), dry=dry)
     else 
         envnamesdb = CSV.read(
             CSVDATAPATH*"environmentnames.csv", DataFrame, delim=", ",
-            types=Dict(:projectclassification => String, :environmentname => String)
+            types=Dict(:host_id => String, :samplesite => String, :environmentname => String)
         )
     end
     #/ Load cutoffs
@@ -85,10 +85,10 @@ function analyse(;
                 if compute
                     #/ Compute statistics
                     cutoff = only(@subset(cutoffsdb, :environmentname .== env)[!,:cutoff])
+                    # return compute_logfrequencies(edb, cutoff=cutoff)
                     statsdb = compute_summarystatistics(edb, cutoff=cutoff)
                     logfreqdb = compute_logfrequencies(edb, cutoff=cutoff)
                     rescaledlogfreqdb = compute_rescaledlogfrequencies(edb, cutoff=cutoff)
-                    # return statsdb, logfreqdb, rescaledlogfreqdb
                     #/ Save
                     if !dry
                         statsfname = CSVDATAPATH*"meanfrequencydata_$(env).csv"
@@ -97,12 +97,14 @@ function analyse(;
                         rescaledlogfreqfname = CSVDATAPATH *
                                                "rescaledlogfrequencydata_$(env).csv"
                         #~ write unscaled frequencies
-                        __logfreqdb =
-                            DataFrames.select(logfreqdb, [:otu_id,:log_frequency])
+                        __logfreqdb = DataFrames.select(
+                            logfreqdb, [:otu_id,:experiment_day,:log_frequency]
+                        )
                         CSV.write(logfreqfname, __logfreqdb, delim=", ")
                         #~ write rescaled frequencies
-                        __rescaledlogfreqdb =
-                            DataFrames.select(rescaledlogfreqdb, [:otu_id,:log_frequency])
+                        __rescaledlogfreqdb =DataFrames.select(rescaledlogfreqdb,
+                            [:otu_id,:experiment_day,:log_frequency]
+                        )
                         CSV.write(rescaledlogfreqfname, __rescaledlogfreqdb, delim=", ")
                     end
                 else
@@ -112,17 +114,6 @@ function analyse(;
                     rescaledlogfreqfname = CSVDATAPATH*"rescaledlogfrequencydata_$(env).csv"
                     rescaledlogfreqdb = CSV.read(rescaledlogfreqfname, DataFrame, delim=", ")
                 end
-                #/ if sad=true, compute the histogram of the abundance distribution
-                #  without taking into account the mean across samples
-                #!note: the relevant database is
-                #!note: the relevant column is `:log_frequency`
-                if sad
-                    fh = Histogram.compute_fhist(logfreqdb[!,:log_frequency])
-                    if !dry
-                        JLD2.jldsave(JLDATAPATH * "sadfhist_$(env).jld2"; histogram=fh)
-                    end
-                end
-                #@TODO IMPLEMENT THIS
                 #/ if mad=true, compute the histogram of mean log frequencies
                 #!note: the relevant column is `:mean_log_frequency`
                 if mad
@@ -158,23 +149,20 @@ function analyse(;
         end
         for (i,env) in enumerate(envnamesdb.environmentname)
             cutoff = only(@subset(cutoffsdb, :environmentname .== env)[!,:cutoff])
-            freqdatafname = CSVDATAPATH*"meanfrequencydata_$(env).csv"
+            freqdatafname = CSVDATAPATH*"logfrequencydata_$(env).csv"
             if isfile(freqdatafname)
-                try 
+                try
                     _idx = findall(envstatsdb.environmentname.==env)[begin]
-                    db = CSV.read(freqdatafname, DataFrame, delim=", ")
+                    db = CSV.read(freqdatafname, DataFrame, delim=", ")                    
                     #/ Compute moments
-                    logfreqs = db[!,:mean_log_frequency]
+                    logfreqs = db[!,:log_frequency]
                     μest, σest = Moments.fittrunclognormal(
-                        logfreqs;
-                        uguess = [minimum(logfreqs), std(logfreqs), cutoff],
-                        lower = cutoff
+                        logfreqs; uguess = [mean(logfreqs), std(logfreqs)], lower=cutoff
                     )
                     envstatsdb[_idx,:mu] = μest
                     envstatsdb[_idx,:sigma] = σest
                     envstatsdb[_idx,:cutoff] = cutoff
                 catch e
-                    @info "error" e
                     println("frequency data exists but datafile is empty, skipping [$(env)]")
                     continue
                 end
@@ -191,8 +179,14 @@ end
 "Load the RData as a DataFrame"
 function load_data(; rdatafilename = RDATAPATH*"crosssecdata.RData")
     @info "Loading raw data..."
-    db = RData.load(rdatafilename)["datatax"]
-    db = @transform(db, :classification = String.(:classification))
+    db = RData.load(rdatafilename)["proj_time"]
+    db = @transform(
+        db,
+        :classification = String.(:classification),
+        :host_id = String.(:host_id),
+        :samplesite = String.(:samplesite),
+        :date_collection = String.(:date_collection)
+    )
     return db
 end
 
@@ -202,20 +196,26 @@ end
 """
 function split_data(db::DataFrame; dry=false)
     @info "Splitting raw data..."
-    #/ 1. Create unique ID for project and classification
-    db = @transform(db, :projectclassification = :project_id .* :classification)
+    #/ 1. Create unique ID for host ID and sampling site
+    db = @chain db begin
+        @transform(:site_id = :host_id .* :samplesite)
+        @select(Not([:project_id, :classification]))
+    end
     #~ Load short-hand names for the environments
     #  these are defined in CSVDATAPATH/environmentnames.csv
     environmentnamesdb = CSV.read(
         CSVDATAPATH*"environmentnames.csv", DataFrame, delim=", ",
-        types=Dict(:projectclassification => String, :environmentname => String)
+        types=Dict(:host_id => String, :samplesite => String, :environmentname => String)
     )
+    environmentnamesdb = @chain environmentnamesdb begin
+        @transform(:site_id = :host_id .* :samplesite)
+        @select(Not([:host_id, :samplesite]))
+    end
+    
     #~ Replace the :project_id and :classification columns by a single column
     #  this makes it easier down the line, and also provides the :environmentname column
-    db = @chain begin
-        innerjoin(db, environmentnamesdb, on=:projectclassification)
-        select(Not([:project_id, :classification, :projectclassification]))
-    end
+    db = innerjoin(db, environmentnamesdb, on=:site_id)
+    db = select(db, Not([:host_id, :samplesite]))
 
     #/ 2. For each environmentname, select the subset of data from that environment and
     #     store it seperately for further analysis
@@ -232,9 +232,8 @@ end
 
 function filter_data(db::DataFrame;
     minsamples = 30,
-    minreads = 10_000,
-    mincounts = 1,
-    remove_runs = ["ERR1104477", "ERR1101508", "SRR2240575"] # bad runs filtered by Grilli
+    minreads = 1000,
+    mincounts = 1
 )
     #/ Check the total number of samples
     #~ if not enough samples, do nothing (i.e., skip it)
@@ -246,7 +245,6 @@ function filter_data(db::DataFrame;
 
     #/ Filter entries and create filtered dataframe
     fdb = @chain db begin
-        @rsubset(!in(:run_id, remove_runs))
         @subset(:nreads .> minreads)
         @subset(:count .> mincounts)
     end
@@ -266,14 +264,13 @@ Compute log frequencies (relative abundances) across communities (samples)
 function compute_logfrequencies(fdb::DataFrame; cutoff = -100.0)
 	  #/ Compute the total number of runs/samples for the specific environment
     nruns = length(unique(fdb[!,:run_id]))
-    #/ Chain multiple dataframe operations to compute the rescaled log frequency
-    #~ rescaled log frequency = log((x - μ)/σ)
+    #/ Chain multiple dataframe operations to compute the log frequency
     db = @chain fdb begin
         #~ Compute frequencies
         @transform(:frequency = :count ./ :nreads)
         @transform(:log_frequency = log.(:frequency))
         @subset(:log_frequency .> cutoff)
-        @select(:otu_id, :sample_id, :run_id, :log_frequency)
+        @select(:otu_id, :sample_id, :run_id, :experiment_day, :log_frequency)
     end
 
     db = @chain db begin
@@ -282,7 +279,6 @@ function compute_logfrequencies(fdb::DataFrame; cutoff = -100.0)
         @subset(:log_frequency .> -Inf, :log_frequency .< Inf)
         @subset(:log_frequency .> cutoff)
     end
-
     return db
 end
 
@@ -309,9 +305,9 @@ function compute_summarystatistics(fdb::DataFrame; cutoff::Float64 = -100.0)
         )
         #~ Take the occupation number into account
         #~ this means that μ → o⋅μ and σ² → o⋅[σ²+μ²(1-o)], where o the occupancy
-        @transform(:mean_frequency = :mean_frequency .* :occupancy)
-        @transform(:var_frequency = :var_frequency .+ :mean_frequency.^2 .* (1 .- :occupancy))
-        @transform(:var_frequency = :var_frequency .* :occupancy)
+        # @transform(:mean_frequency = :mean_frequency .* :occupancy)
+        # @transform(:var_frequency = :var_frequency .+ :mean_frequency.^2 .* (1 .- :occupancy))
+        # @transform(:var_frequency = :var_frequency .* :occupancy)
         #~ Perform a log-transform on the mean-frequency (needed for lognormal)
         @transform(:mean_log_frequency = log.(:mean_frequency))
         #~ Select only those above a specified cutoff (filter)

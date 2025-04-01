@@ -4,7 +4,7 @@
        written using a specific personalized theme that is not included in this repository
 =#
 #/ Start module
-module MADPlotter
+module SADPlotter
 
 #/ Packages
 using CairoMakie
@@ -30,10 +30,9 @@ const JLDATAPATH = "../data/jld/"
 		Plot probability densities of rescaled log abundances
     Aggregates all environments into a single plot
 """
-function plot_mad(;
-    prefix::String = "longitudinal/",
-    envstatsfname::String = CSVDATAPATH * prefix * "environmentstats.csv",
-    histdir::String = JLDATAPATH * prefix,
+function plot_sad(;
+    envstatsfname::String = CSVDATAPATH * "environmentstats.csv",
+    histdir::String = JLDATAPATH,
     rescale=true,
     savefig=false,
     figname=nothing
@@ -45,8 +44,8 @@ function plot_mad(;
     )
     ax = Axis(
         fig[1,1],
-        limits=(-6,6,1e-4,1e0),
-        xlabel=L"\textrm{rescaled\;log\;abundances}", ylabel=L"\textrm{pdf}",
+        limits=(-6,6,1e-4,1e1),
+        xlabel=L"\textrm{log\;abundances}", ylabel=L"\textrm{pdf}",
         xlabelsize=12, ylabelsize=12,
         yscale=log10, yminorticksvisible=false,
         xticklabelsize=8, yticklabelsize=8
@@ -62,11 +61,11 @@ function plot_mad(;
     edb = CSV.read(envstatsfname, DataFrame, delim=", ")
     #/ Filter envnames to include only those for which a histogram exists
     #~!note: these should total 9 distinct environments
-    edb = filter(row -> isfile(histdir*"madfhist_$(row.environmentname).jld2"), edb)
+    edb = filter(row -> isfile(histdir*"sadfhist_$(row.environmentname).jld2"), edb)
 
     for (i, envname) in enumerate(edb.environmentname)
         #/ Load histogram and normalize
-        fh = JLD2.load(histdir*"madfhist_$(envname).jld2")["histogram"] |> normalize
+        fh = JLD2.load(histdir*"sadfhist_$(envname).jld2")["histogram"] |> normalize
         #~ Compute x-values at which to plot
         xplot = (fh.binedges[begin][2:end] + fh.binedges[begin][1:end-1]) ./ 2
         xpdf = range(-5,5,250)
@@ -118,23 +117,20 @@ function plot_mad(;
 end
 
 """
-    Plot MADs for each environment separately
+    Plot SADs for each environment separately
     Does not aggregate, intended to display the differences between the environments, which
     is lost when one rescales the distributions
 """
-function plot_mads(;
-    prefix::String = "longitudinal/",
-    envstatsfname::String = CSVDATAPATH * prefix * "environmentstats.csv",
-    histdir::String = JLDATAPATH * prefix,
-    # envstatsfname::String = CSVDATAPATH * "environmentstats.csv",
-    # histdir::String = JLDATAPATH,
+function plot_sads(;
+    envstatsfname::String = CSVDATAPATH * "environmentstats.csv",
+    histdir::String = JLDATAPATH,
     rescale = false,
     savefig=false, figname=nothing
 )
     #/ Create figure
-    width = 1.5 * 246
+    width = 1.4 * 246
     fig = Figure(;
-        size=(width,width/1.87), figure_padding=(2,8,2,2), backgroundcolor=:transparent
+        size=(width,width/1.5), figure_padding=(2,8,2,2), backgroundcolor=:transparent
     )
     #/ Specify colors 
     colors = CairoMakie.to_colormap(:tab10)
@@ -147,9 +143,8 @@ function plot_mads(;
     db = CSV.read(envstatsfname, DataFrame, delim=", ")
     #/ Filter envnames to include only those for which a histogram exists
     #~!note: these should total 9 distinct environments
-    db = filter(row -> isfile(histdir*"madfhist_$(row.environmentname).jld2"), db)
+    db = filter(row -> isfile(histdir*"sadfhist_$(row.environmentname).jld2"), db)
 
-    axsize = prefix == "crossectional/" ? (3, 3) : (2, 4)
     ax = [Axis(
         fig[i,j],
         title=L"\textrm{%$(db.environmentname[3*(i-1)+j])}", titlesize=9, titlegap=1,
@@ -166,26 +161,21 @@ function plot_mads(;
     xpdf = range(-20,5,250)
     for (i, envname) in enumerate(db.environmentname)
         #/ Load histogram
-        fh = JLD2.load(histdir*"madfhist_$(envname).jld2")["histogram"] |> normalize
+        fh = JLD2.load(histdir*"sadfhist_$(envname).jld2")["histogram"] |> normalize
         
         #/ Compute grid indices
-        if prefix == "crosssectional/"
-            gi = (i - 1) ÷ 3 + 1
-            gj = mod1(i, 3)
-        else
-            gi = (i-1) ÷ 4 + 1
-            gj = mod1(i,4)
-        end
+        gi = (i-1) ÷ 3 + 1
+        gj = mod1(i,3)
         
         c = only(db[db.environmentname .== envname, :cutoff])
         xplot = (fh.binedges[begin][2:end] + fh.binedges[begin][1:end-1]) ./ 2
 
         if !rescale                      
-            μ = db[i,:mu]
-            σ = db[i,:sigma]
-            c = db[i,:cutoff]
-            n = truncated(Normal(μ, σ), lower=c)
-            lines!(ax[gi,gj], xpdf, xpdf -> pdf(n,xpdf), color=:black, linewidth=0.5)
+            # μ = db[i,:mu]
+            # σ = db[i,:sigma]
+            # c = db[i,:cutoff]
+            # n = truncated(Normal(μ, σ), lower=c)
+            # lines!(ax[gi,gj], xpdf, xpdf -> pdf(n,xpdf), color=:black, linewidth=0.5)
             
             vlines!(ax[gi,gj], [c], linestyle=(:dash,:dense), color=:black, linewidth=.5)
             scatter!(
@@ -206,5 +196,5 @@ function plot_mads(;
     return fig
 end
 
-end # module MADPlotter
+end # module SADPlotter
 #/ End module
