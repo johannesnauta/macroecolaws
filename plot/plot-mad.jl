@@ -221,7 +221,7 @@ function plot_madfromafd(;
     )
     ax = Axis(
         fig[1,1],
-        limits=(-5,5,1e-3,1e1),
+        limits=(-5,5,1e-3,1e0),
         xlabel=L"\textrm{mean\;log\;abundances}", ylabel=L"\textrm{pdf}",
         xlabelsize=12, ylabelsize=12,
         yscale=log10, yminorticksvisible=false,
@@ -265,7 +265,6 @@ function plot_madfromafd(;
             end
             xplot = @. (xplot - mlefit.μ) / mlefit.σ
             yplot = fh.bincounts .* mlefit.σ
-            @info "hm" xplot yplot
             scatter!(
                 ax, xplot, yplot, markersize=3, strokewidth=.5,
                 color=colors[i], marker=markers[i], label=envname

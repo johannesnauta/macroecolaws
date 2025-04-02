@@ -29,8 +29,10 @@ using Distributions, Statistics
 #/ Local packages
 include("compute-histogram.jl")
 include("compute-moments.jl")
+include("compute-mixture.jl")
 using .Histogram
 using .Moments
+using .Mixture
 
 #~ Specify paths
 #!note: if these do not exist, create them 
@@ -165,13 +167,14 @@ function analyse(;
                     db = CSV.read(freqdatafname, DataFrame, delim=", ")                    
                     #/ Compute moments
                     logfreqs = db[!,:mean_log_frequency]
-                    μest, σest = Moments.fittrunclognormal(
-                        logfreqs; uguess = [mean(logfreqs), std(logfreqs)], lower=cutoff
+                    μest, logσest, cest = Moments.fittrunclognormal(
+                        logfreqs; uguess = [mean(logfreqs), std(logfreqs), cutoff]
                     )
                     envstatsdb[_idx,:mu] = μest
-                    envstatsdb[_idx,:sigma] = σest
-                    envstatsdb[_idx,:cutoff] = cutoff
+                    envstatsdb[_idx,:sigma] = exp(logσest)
+                    envstatsdb[_idx,:cutoff] = cest
                 catch e
+                    println(e)
                     println("frequency data exists but datafile is empty, skipping [$(env)]")
                     continue
                 end
@@ -370,7 +373,7 @@ end
 """
 Compute shape and scale parameters of OTUs with at least a specific number of days sampled
 """
-function compute_shapescale(fdb::DataFrame; mindays::Int = 30, dist=Distributions.Gamma)
+function compute_shapescale(fdb::DataFrame; mindays::Int = 30, prior=Distributions.Gamma)
     #~ Compute the total no. of days that the OTU was measured
     daydb = @chain fdb begin
         @by(:otu_id, :ndays = length(unique(:experiment_day)))
@@ -378,14 +381,22 @@ function compute_shapescale(fdb::DataFrame; mindays::Int = 30, dist=Distribution
     end
     fdb = rightjoin(fdb, daydb, on=:otu_id)
 
-    #~ For each otu_id, fit a Gamma distribution and collect the shape and scale parameters
+    #~ For each otu_id, fit a Gamma mixture distribution and
+    #  collect the shape and scale parameters
     pdb = @chain fdb begin
         @transform(:frequency = exp10.(:log_frequency))
         @groupby(:otu_id)
-        @combine(:mlefit = Distributions.fit_mle(dist, :frequency))
-        #~ extract the scale and the shape from the params tuple
-        @transform(:shape = first.(params.(:mlefit)), :scale = last.(params.(:mlefit)))
-        @select(:otu_id, :shape, :scale)
+        @combine(
+            :mleparams = Mixture.fit_mixture(
+                :frequency, prior=prior,
+                guess = [mean(:frequency) / 1., 1., 0.9, maximum(:frequency), 1.]
+            )
+        )
+        @transform(:shape = getfield.(:mleparams, ^(:shape)))
+        @transform(:scale = getfield.(:mleparams, ^(:scale)))
+        @transform(:ε = getfield.(:mleparams, ^(:ε)))
+        @transform(:fhmean = exp.(Statistics.mean.(:fhist)))
+        @select(Not(:mleparams))
     end
     return pdb
 end

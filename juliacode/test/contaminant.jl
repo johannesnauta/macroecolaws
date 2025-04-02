@@ -4,44 +4,46 @@ module CTest
 using Distributions, Optim, StatsBase, Plots, Random
 
 # Define the mixture log-likelihood function
-function gamma_mixture_loglik(params, data)
-    logα, logθ, ε, μ, logσ = params  # Shape (α), scale (θ), and contamination fraction (ε)
-    if ε < 0 || ε > 1
-        ε = 1 / ε
-    end
-    Γ = Gamma(exp(logα), exp(logθ))
-    G = Normal(μ, exp(logσ))
-    Γpdf = pdf.(Γ, data)
-    Gpdf = pdf.(G, data)
-
-    γ = @. ε * Γpdf  / (ε * Γpdf  + (1 - ε) * Gpdf)
-    Q = @. γ * log(ε * Γpdf) + (1-γ)*log((1-ε) * Gpdf)
-    loglikelihood = sum(Q)
-    return -loglikelihood  # Negative log-likelihood for minimization
+function negloglikelihood(params, data; prior = Distributions.Gamma)
+    logα, logθ, sigε, μ, logσ = params  # Shape (α), scale (θ), and contamination fraction (ε)
+    #/ Do the transformations
+    #~ these transformations are done such that the parameters are in the correct domain
+    #~ for ε we use a sigmoid as it's in (0,1)
+    #~ for all other positive parameters, a simple log/exp transform
+    ε = 1 / (1 + exp(-sigε))
+    α = exp(logα)
+    θ = exp(logθ)
+    σ = exp(logσ)
+    #/ Define the distributions, and compute their pdf
+    p = prior(α, θ)
+    N = Distributions.Normal(μ, σ)
+    _priorpdf = pdf.(p, data)
+    _normalpdf = pdf.(N, data)
+    #/ Use the pdf ration p(x|ϑ) as the 'weight' for the data
+    γ = @. ε * _priorpdf  / (ε * _priorpdf  + (1 - ε) * _normalpdf)
+    loglikelihood = @. γ * log(ε * _priorpdf) + (1-γ)*log((1-ε) * _normalpdf)
+    return -sum(loglikelihood)
 end
 
 # Fit the Gamma + Contaminant Model
-function fit_gamma_mixture(data)
-    MLE = fit_mle(Gamma, data)  # Initial estimates from standard MLE
-    αguess, θguess = MLE.α, MLE.θ
-    εguess = 0.5
-    params = [log(αguess), log(θguess), εguess, maximum(data), log(std(data))]
-
-    mixturefit = optimize(x -> gamma_mixture_loglik(x, data), params, Optim.NelderMead())
-    return Optim.minimizer(mixturefit)
+function fit_mixture(samples; prior = Distributions.Gamma, guess = [1., 1., 0.5, 1., 1.])
+    mle = optimize(x -> negloglikelihood(x, samples, prior=prior), guess, Optim.NelderMead())
+    return Optim.minimizer(mle)
 end
 
 function plot_stuff()
     Random.seed!(42)
-    samples = vcat(rand(Gamma(3, 2), 500), rand(Normal(100., 10.), 1))
-    fitresult = fit_gamma_mixture(samples)
-    logshape, logscale, ε, μ, logσ = fitresult
+    n = 512
+    ε = 0.97
+    nε = round(Int, n * ε)
+    samples = vcat(rand(Gamma(3, 2), nε), rand(Normal(25., 1.), n-nε))
+    fitresult = fit_mixture(samples, prior=Distributions.Gamma)
+    logshape, logscale, sigε, μ, logσ = fitresult
+    ε = 1 / (1 + exp(-sigε))
 
     plt = histogram(samples, nbins=101, normalize=:pdf, legend=true)
     Γ = Gamma(exp(logshape), exp(logscale))
-
-    # U = Uniform(umin, umax)
-    # U = Uniform(minimum(samples) + log(umin), maximum(samples) + log(umax))
+    
     G = Normal(μ, exp(logσ))
     xplot = range(1e-3, 1.25*maximum(samples), 256)
     Γpdf = pdf.(Γ, xplot)
