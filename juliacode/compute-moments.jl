@@ -18,9 +18,10 @@ using Random
 function fittrunclognormal(samples; uguess = [-10.0, 1.0, 1e-8], lower=-Inf, upper=Inf)
     #/ Fit a truncated lognormal distribution
     function negtruncnormlikelihood(p, data)
+        println(p)
         μ, logσ, c = p
         p = truncated(Normal(μ,exp(logσ)), lower=c, upper=upper)
-        return -sum(logpdf.(p, data))
+        return -logpdf.(p, data)
     end
 
     result = Optim.optimize(

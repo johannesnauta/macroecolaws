@@ -19,6 +19,9 @@ using JLD2
 using CSV, DataFrames, DataFramesMeta
 using FHist
 
+include("../juliacode/compute-moments.jl")
+using .Moments
+
 #~ Specify paths
 #!note: if these do not exist, create them
 const RDATAPATH = "../data/rdata/"
@@ -245,6 +248,7 @@ function plot_madfromafd(;
         fitdb = CSV.read(distfitdir * "distfitdata_$(envname).csv", DataFrame, delim=", ")
         #~ For each of the OTUs, create a distribution object, and use it to sample
         fitdb = @transform(fitdb, :log_mean_frequency = log.(:scale .* :shape))
+        # fitdb = @transform(fitdb, :log_mean_frequency = exp.(:scale))
         #~ Plot the distribution over means
         bmin, bmax = extrema(fitdb.log_mean_frequency)
         binedges = range(bmin, stop=bmax, length=nbins)
@@ -254,7 +258,6 @@ function plot_madfromafd(;
         xplot = (fh.binedges[begin][2:end] + fh.binedges[begin][1:end-1]) ./ 2
         #~ Plot
         if rescale
-            mlefit = Distributions.fit_mle(Normal, fitdb.log_mean_frequency)
             if i == 1
                 xpdf = range(-5, 5, 256)
                 standardnormal = Normal(0, 1)
@@ -263,8 +266,18 @@ function plot_madfromafd(;
                     color=:black, linewidth=.8
                 )
             end
-            xplot = @. (xplot - mlefit.μ) / mlefit.σ
-            yplot = fh.bincounts .* mlefit.σ
+
+            #~ Fit here a truncated normal distribution, and shift accordingly
+            #? Or what to do here exactly?
+            # μest, logσest, cest = Moments.fittrunclognormal(
+            #     fitdb.log_mean_frequency,
+            #     uguess = [mean(fitdb.log_mean_frequency), std(fitdb.log_mean_frequency), -30]
+            # )
+            # mlefit = Distributions.fit_mle(Normal, fitdb.log_mean_frequency)
+            # xplot = @. (xplot - mlefit.μ) / mlefit.σ
+            # yplot = @. fh.bincounts * mlefit.σ
+            xplot = @. (xplot - mean(fh)) / std(fh)
+            yplot = fh.bincounts .* std(fh)
             scatter!(
                 ax, xplot, yplot, markersize=3, strokewidth=.5,
                 color=colors[i], marker=markers[i], label=envname

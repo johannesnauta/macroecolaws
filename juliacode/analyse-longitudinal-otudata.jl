@@ -345,23 +345,34 @@ function compute_rescaledlogfrequencies(fdb::DataFrame; cutoff = -100.0)
         @subset(:log_frequency .> cutoff)
     end
 
+    odb = @by(db, :otu_id, :noccurances = length(:otu_id))
+    db = leftjoin(db, odb, on=:otu_id)
+    db = @subset(db, :noccurances .> 1)
+
     #/ Compute summary statistics for each otu_id
     summarydb = @chain db begin
+            # :mean_logfrequency = mean(Histogram.compute_fhist(skipmissing(:log_frequency))),
+            # :mean_logfrequency = mean(:fhist),
+            # :std_logfrequency = std(:fhist, corrected=false),
+            # :std_logfrequency = std(skipmissing(:log_frequency), corrected=false),
+            # :occupancy = length(:otu_id) ./ nruns
         @by(
             :otu_id,
-            :mean_logfrequency = mean(skipmissing(:log_frequency)),
-            :std_logfrequency = std(skipmissing(:log_frequency), corrected=false),
-            :occupancy = length(:otu_id) ./ nruns
+            :mean_logfrequency = mean(Histogram.compute_fhist(:log_frequency)),
+            :std_logfrequency = std(Histogram.compute_fhist(:log_frequency))
         )
-        @subset(:std_logfrequency .> 0.0, :occupancy .≈ 1.0)
+        @subset(:std_logfrequency .> 0.0)
         @select(:otu_id, :mean_logfrequency, :std_logfrequency)
     end
-
+    
     #/ Rescale the log frequency by the summary statistics
     #!note: `missing` values are propagated and need to be filtered out
     db = DataFrames.leftjoin(db, summarydb, on=:otu_id)
     db = @chain db begin
-        @transform(:log_frequency = (:log_frequency.-:mean_logfrequency)./:std_logfrequency) 
+        #~?Why does this particular step 'work', as the log_frequencies are *not*
+        #  normally distributed (in fact, they are most likely gamma distributed), so the
+        #  mean here has no statistical meaning
+        @transform(:log_frequency = (:log_frequency.-:mean_logfrequency)./:std_logfrequency)
         #~ Omit (log) frequencies that are NaN and/or missing
         @transform(:log_frequency = coalesce.(:log_frequency, -Inf))
         @subset(:log_frequency .> -Inf, :log_frequency .< Inf)
@@ -392,10 +403,11 @@ function compute_shapescale(fdb::DataFrame; mindays::Int = 30, prior=Distributio
                 guess = [mean(:frequency) / 1., 1., 0.9, maximum(:frequency), 1.]
             )
         )
+        #~ Get the field of the :mleparams struct with the symbol ^(:symbol)
+        #  otherwise DataFramesMeta macros thing :symbol is a column, which they are not
         @transform(:shape = getfield.(:mleparams, ^(:shape)))
         @transform(:scale = getfield.(:mleparams, ^(:scale)))
         @transform(:ε = getfield.(:mleparams, ^(:ε)))
-        @transform(:fhmean = exp.(Statistics.mean.(:fhist)))
         @select(Not(:mleparams))
     end
     return pdb

@@ -65,7 +65,6 @@ function plot_afd(;
     #/ Filter envnames to include only those for which a histogram exists
     #~!note: these should total 9 distinct environments
     edb = filter(row -> isfile(jlddir*"afdfhist_$(row.environmentname).jld2"), edb)
-
     
     #/ Compute and save moments if they do not exist, otherwise load them
     if compute_moments
@@ -77,18 +76,25 @@ function plot_afd(;
             append!(freqs, exp.(freqdb[!,:log_frequency]))
         end
         #~ Fit gamma distribution
-        gammafit = Distributions.fit(Gamma, freqs)
+        gammafit = Distributions.fit_mle(Gamma, freqs)
+        lognormfit = Distributions.fit_mle(LogNormal, freqs)
         α, θ = params(gammafit)
+        μ, σ = params(lognormfit)
         jldsave(jlddir * "gammaparams.jld2"; α=α, θ=θ)
+        jldsave(jlddir * "lognormalparams.jld2"; μ=μ, σ=σ)
     else
         gammaparams = JLD2.load(jlddir * "gammaparams.jld2")
         α, θ = gammaparams["α"], gammaparams["θ"]
+        lognormparams = JLD2.load(jlddir * "lognormalparams.jld2")
+        μ, σ = lognormparams["μ"], lognormparams["σ"]
     end
 
     #/ Plot fitted gamma distribution
-    xgamma = exp.(range(-7, 5, 16))
-    ygamma = xgamma .* Distributions.pdf.(Gamma(α,θ), xgamma)
-    gammaline = lines!(ax, log.(xgamma), ygamma, color=:black, linewidth=.8)
+    xfits = exp.(range(-9, 5, 16))
+    ygamma = xfits .* Distributions.pdf.(Gamma(α,θ), xfits)
+    ylognormal = xfits .* Distributions.pdf(LogNormal(μ,σ), xfits)
+    gammaline = lines!(ax, log.(xfits), ygamma, color=:black, linewidth=.8, linestyle=:dash)
+    lognormalline = lines!(ax, log.(xfits), ylognormal, color=:black, linewidth=.8)
 
     for (i, envname) in enumerate(edb.environmentname)
         #/ Load histogram and normalize
@@ -101,12 +107,13 @@ function plot_afd(;
             ax, xplot, fh.bincounts, markersize=4, strokewidth=.5,
             marker=markers[i], color=colors[i], label=envname
         )
-    end
+    end    
     
     #/ Add legend(s)
     axislegend(
-        ax, [gammaline], [L"\textrm{gamma}"], position=:lt, labelsize=9,
-        patchsize=(5,1), padding=0, margin=(2,0,0,2), framevisible=false
+        ax, [gammaline, lognormalline], [L"\textrm{gamma}", L"\textrm{lognormal}"],
+        position=:lt, labelsize=9, nbanks=2, patchlabelgap=1.5,
+        patchsize=(6,1), padding=0, margin=(2,0,0,2), framevisible=false
     )
     Legend(
         fig[1,2], ax, labelsize=8, rowgap=0, patchsize=(2,2), framevisible=false

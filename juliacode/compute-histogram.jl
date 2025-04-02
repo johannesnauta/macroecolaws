@@ -3,8 +3,8 @@
 module Histogram
 
 #/ Packages
-using DataFrames, DataFramesMeta
-using FHist 
+using FHist
+using StatsBase
 
 #################
 ### FUNCTIONS ###
