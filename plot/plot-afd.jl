@@ -47,7 +47,7 @@ function plot_afd(;
     )
     ax = Axis(
         fig[1,1],
-        limits=(-10,10,1e-4,1e0),
+        limits=(-10,6,1e-4,1e0),
         xlabel=L"\textrm{rescaled\;log\;abundances}", ylabel=L"\textrm{pdf}",
         xlabelsize=12, ylabelsize=12,
         yscale=log10, yminorticksvisible=false,
@@ -112,7 +112,7 @@ function plot_afd(;
     #/ Add legend(s)
     axislegend(
         ax, [gammaline, lognormalline], [L"\textrm{gamma}", L"\textrm{lognormal}"],
-        position=:lt, labelsize=9, nbanks=2, patchlabelgap=1.5,
+        position=:lt, labelsize=8, nbanks=1, patchlabelgap=1.2,
         patchsize=(6,1), padding=0, margin=(2,0,0,2), framevisible=false
     )
     Legend(

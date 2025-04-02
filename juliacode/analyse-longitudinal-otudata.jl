@@ -153,26 +153,27 @@ function analyse(;
     #  the moments using the desired procedure(s)
     if moments
         statsfname = CSVDATAPATH * "environmentstats.csv"
-        if !isfile(statsfname)
-            envstatsdb = @transform(envnamesdb, :mu=0.0, :sigma=0.0, :cutoff=0.0)
-        else
-            envstatsdb = CSV.read(statsfname, DataFrame, delim=", ")
-        end
+        # if !isfile(statsfname)
+        envstatsdb = @transform(envnamesdb, :mu=0.0, :sigma=0.0, :cutoff=0.0)
+        # else
+            # envstatsdb = CSV.read(statsfname, DataFrame, delim=", ")
+        # end
         for (i,env) in enumerate(envnamesdb.environmentname)
             cutoff = only(@subset(cutoffsdb, :environmentname .== env)[!,:cutoff])
             freqdatafname = CSVDATAPATH*"meanfrequencydata_$(env).csv"
             if isfile(freqdatafname)
                 try
                     _idx = findall(envstatsdb.environmentname.==env)[begin]
-                    db = CSV.read(freqdatafname, DataFrame, delim=", ")                    
+                    db = CSV.read(freqdatafname, DataFrame, delim=", ")
+                    # return db
                     #/ Compute moments
                     logfreqs = db[!,:mean_log_frequency]
-                    μest, logσest, cest = Moments.fittrunclognormal(
-                        logfreqs; uguess = [mean(logfreqs), std(logfreqs), cutoff]
+                    μest, logσest = Moments.fittrunclognormal(
+                        logfreqs; uguess = [mean(logfreqs),log(std(logfreqs))], lower=cutoff
                     )
                     envstatsdb[_idx,:mu] = μest
                     envstatsdb[_idx,:sigma] = exp(logσest)
-                    envstatsdb[_idx,:cutoff] = cest
+                    envstatsdb[_idx,:cutoff] = cutoff
                 catch e
                     println(e)
                     println("frequency data exists but datafile is empty, skipping [$(env)]")
@@ -355,13 +356,15 @@ function compute_rescaledlogfrequencies(fdb::DataFrame; cutoff = -100.0)
             # :mean_logfrequency = mean(:fhist),
             # :std_logfrequency = std(:fhist, corrected=false),
             # :std_logfrequency = std(skipmissing(:log_frequency), corrected=false),
-            # :occupancy = length(:otu_id) ./ nruns
         @by(
             :otu_id,
+            # :mean_logfrequency = mean(:log_frequency),
+            # :std_logfrequency = std(:log_frequency),            
             :mean_logfrequency = mean(Histogram.compute_fhist(:log_frequency)),
-            :std_logfrequency = std(Histogram.compute_fhist(:log_frequency))
+            :std_logfrequency = std(Histogram.compute_fhist(:log_frequency)),
+            :occupancy = length(:otu_id) ./ nruns
         )
-        @subset(:std_logfrequency .> 0.0)
+        @subset(:std_logfrequency .> 0.0, :occupancy .≈1.)
         @select(:otu_id, :mean_logfrequency, :std_logfrequency)
     end
     

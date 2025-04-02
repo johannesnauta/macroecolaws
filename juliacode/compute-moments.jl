@@ -15,13 +15,12 @@ using Random
 #################
 ### FUNCTIONS ###
 """Compute moments of a truncated lognormal distribution"""
-function fittrunclognormal(samples; uguess = [-10.0, 1.0, 1e-8], lower=-Inf, upper=Inf)
+function fittrunclognormal(samples; uguess = [-10.0, 1.0], lower=-Inf, upper=Inf)
     #/ Fit a truncated lognormal distribution
     function negtruncnormlikelihood(p, data)
-        println(p)
-        μ, logσ, c = p
-        p = truncated(Normal(μ,exp(logσ)), lower=c, upper=upper)
-        return -logpdf.(p, data)
+        μ, logσ = p
+        truncnorm = truncated(Normal(μ, exp(logσ)), lower=lower, upper=upper)
+        return -sum(logpdf.(truncnorm, data))
     end
 
     result = Optim.optimize(
