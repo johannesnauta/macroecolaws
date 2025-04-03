@@ -26,6 +26,9 @@ const RDATAPATH = "../data/rdata/"
 const CSVDATAPATH = "../data/csv/"
 const JLDATAPATH = "../data/jld/"
 
+include("../juliacode/compute-moments.jl")
+using .Moments
+
 #################
 ### FUNCTIONS ###
 """
@@ -64,7 +67,7 @@ function plot_afd(;
     edb = CSV.read(envstatsfname, DataFrame, delim=", ")
     #/ Filter envnames to include only those for which a histogram exists
     #~!note: these should total 9 distinct environments
-    edb = filter(row -> isfile(jlddir*"sampleafdfhist_$(row.environmentname).jld2"), edb)
+    edb = filter(row -> isfile(jlddir*"afdfhist_$(row.environmentname).jld2"), edb)
     
     #/ Compute and save moments if they do not exist, otherwise load them
     if compute_moments
@@ -73,10 +76,8 @@ function plot_afd(;
         for (i, envname) in enumerate(edb.environmentname)
             filename = CSVDATAPATH * prefix * "rescaledlogfrequencydata_$(envname).csv"
             freqdb = CSV.read(filename, DataFrame, delim=", ")
-            @info "hm" freqdb.sample_log_frequency
-            append!(freqs, exp.(freqdb[!,:sample_log_frequency]))
+            append!(freqs, exp.(freqdb[!,:log_frequency]))
         end
-        @info "here?" freqs
         #~ Fit gamma distribution
         gammafit = Distributions.fit_mle(Gamma, freqs)
         lognormfit = Distributions.fit_mle(LogNormal, freqs)
@@ -95,14 +96,13 @@ function plot_afd(;
     for (i, envname) in enumerate(edb.environmentname)
         filename = CSVDATAPATH * prefix * "rescaledlogfrequencydata_$(envname).csv"
         freqdb = CSV.read(filename, DataFrame, delim=", ")
-        gammafit = Distributions.fit_mle(Gamma, exp.(freqdb.log_frequency))
         #/ Load histogram and normalize
-        fh = JLD2.load(jlddir*"sampleafdfhist_$(envname).jld2")["histogram"] |> normalize
+        fh = JLD2.load(jlddir*"afdfhist_$(envname).jld2")["histogram"] |> normalize
         #~ Compute x-values at which to plot
         xplot = (fh.binedges[begin][2:end] + fh.binedges[begin][1:end-1]) ./ 2
         #~ Rescale to standard gamma
         # xplot = xplot .- (gammafit.α * gammafit.θ)
-        # yplot = fh.bincounts .* sqrt(gammafit.α * gammafit.θ^2)        
+        # yplot = fh.bincounts .* sqrt(gammafit.α * gammafit.θ^2)
         
         #/ Plot
         scatter!(

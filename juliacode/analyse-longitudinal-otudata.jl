@@ -388,35 +388,36 @@ function compute_rescaledlogfrequencies(
             :otu_id,
             :mean_log_frequency = mean(Histogram.compute_fhist(:log_frequency)),
             :var_log_frequency = std(Histogram.compute_fhist(:log_frequency)).^2,
-            :sample_mean_frequency = mean(:frequency),
-            :sample_var_frequency = std(:frequency, corrected=false).^2,
+            :sample_mean_log_frequency = mean(:log_frequency),
+            :sample_var_log_frequency = std(:log_frequency, corrected=false).^2,
             :max_log_frequency = maximum(:log_frequency),
             :min_log_frequency = minimum(:log_frequency),
             :occupancy = length(:otu_id) ./ nruns
         )
-        @subset(:var_log_frequency .> 0.0, :sample_var_frequency .> 0.0)
+        @subset(:var_log_frequency .> 0.0, :sample_var_log_frequency .> 0.0)
         #~ Take the occupancy into account
-        @transform(:mean_log_frequency = :mean_log_frequency .* :occupancy)
-        @transform(:var_log_frequency = :var_log_frequency .+
-                                        :mean_log_frequency.^2 .* (1 .- :occupancy))
-        @transform(:var_log_frequency = :var_log_frequency .* :occupancy)
-        @transform(:sample_mean_frequency = :sample_mean_frequency .* :occupancy)
-        @transform(:sample_var_frequency = :sample_var_frequency .+
-                                        :sample_mean_frequency.^2 .* (1 .- :occupancy))
-        @transform(:sample_var_frequency = :sample_var_frequency .* :occupancy)
+        @subset(:occupancy .≈ 1.0)
+        # @transform(:mean_log_frequency = :mean_log_frequency .* :occupancy)
+        # @transform(:var_log_frequency = :var_log_frequency .+
+        #                                 :mean_log_frequency.^2 .* (1 .- :occupancy))
+        # @transform(:var_log_frequency = :var_log_frequency .* :occupancy)
+        # @transform(:sample_mean_log_frequency = :sample_mean_log_frequency .* :occupancy)
+        # @transform(:sample_var_log_frequency = :sample_var_log_frequency .+
+        #                                 :sample_mean_log_frequency.^2 .* (1 .- :occupancy))
+        # @transform(:sample_var_log_frequency = :sample_var_log_frequency .* :occupancy)
         #~ Compute the standard deviation
         @transform(:std_log_frequency = sqrt.(:var_log_frequency))
-        @transform(:sample_mean_log_frequency = log.(:sample_mean_frequency))
-        @transform(:sample_std_frequency = sqrt.(:sample_var_frequency))
+        @transform(:sample_std_log_frequency = sqrt.(:sample_var_log_frequency))
         #~ Select only relevant columns
         @select(
             :otu_id,
             :mean_log_frequency, :std_log_frequency,
-            :sample_mean_log_frequency, :sample_std_frequency
+            :sample_mean_log_frequency, :sample_std_log_frequency
         )
     end
     
     #/ Rescale the log frequency by the summary statistics
+    #~ @TODO Is this needed for the AFD??
     #!note: `missing` values are propagated and need to be filtered out
     db = DataFrames.leftjoin(db, summarydb, on=:otu_id)
     db = @chain db begin
@@ -424,8 +425,8 @@ function compute_rescaledlogfrequencies(
         #  normally distributed (in fact, they are most likely gamma distributed), so the
         #  mean here has no statistical meaning
         @transform(
-            :sample_log_frequency = 
-                (:log_frequency .- :sample_mean_log_frequency) ./ :sample_std_frequency
+            :sample_log_frequency =
+                (:log_frequency.-:sample_mean_log_frequency) ./ :sample_std_log_frequency
         )
         @transform(:log_frequency = (:log_frequency.-:mean_log_frequency)./:std_log_frequency)
         #~ Omit (log) frequencies that are NaN and/or missing
