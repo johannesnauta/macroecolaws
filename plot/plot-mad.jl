@@ -49,7 +49,7 @@ function plot_mad(;
     )
     ax = Axis(
         fig[1,1],
-        limits=(-6,6,1e-4,1e0),
+        limits=(-4,4,1e-3,1e0),
         xlabel=L"\textrm{rescaled\;log\;abundances}", ylabel=L"\textrm{pdf}",
         xlabelsize=12, ylabelsize=12,
         yscale=log10, yminorticksvisible=false,
@@ -86,7 +86,6 @@ function plot_mad(;
             μ = edb[i,:mu]
             σ = edb[i,:sigma]
             c = edb[i,:cutoff]
-
             #/ Strange Grilli rescaling
             # (i == 1) && (
             #     lines!(ax, xpdf,10.0.^(-xpdf.^2), color=:black,linewidth=0.5,linestyle=:dash)

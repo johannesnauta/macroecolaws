@@ -1,9 +1,9 @@
 environmentname, cutoff
-M_tongue, -10.2
-M_feces, -10.2
-M_rightpalm, -10.4
-M_leftpalm, -9.5
-F_tongue, -8.8
-F_feces, -10.2
-F_rightpalm, -8.4
-F_leftpalm, -9.4
+M_tongue, -15.2
+M_feces, -15.1
+M_rightpalm, -15.5
+M_leftpalm, -14.4
+F_tongue, -12.8
+F_feces, -13.8
+F_rightpalm, -12.3
+F_leftpalm, -13.6

@@ -155,11 +155,11 @@ function analyse(;
     #  the moments using the desired procedure(s)
     if moments
         statsfname = CSVDATAPATH * "environmentstats.csv"
-        # if !isfile(statsfname)
-        envstatsdb = @transform(envnamesdb, :mu=0.0, :sigma=0.0, :cutoff=0.0)
-        # else
-            # envstatsdb = CSV.read(statsfname, DataFrame, delim=", ")
-        # end
+        if !isfile(statsfname)
+            envstatsdb = @transform(envnamesdb, :mu=0.0, :sigma=0.0, :cutoff=0.0)
+        else
+            envstatsdb = CSV.read(statsfname, DataFrame, delim=", ")
+        end
         for (i,env) in enumerate(envnamesdb.environmentname)
             cutoff = only(@subset(cutoffsdb, :environmentname .== env)[!,:cutoff])
             freqdatafname = CSVDATAPATH*"meanfrequencydata_$(env).csv"
@@ -281,7 +281,7 @@ Compute statistics for a specific filtered dataframe
 function compute_summarystatistics(
     fdb::DataFrame;
     cutoff::Float64 = -100.0,
-    minoccurrences::Int = 50
+    minoccurrences::Int = 1
 )
     #/ Compute the total number of runs/samples for the specific environment
     nruns = length(unique(fdb[!,:run_id]))
@@ -296,22 +296,23 @@ function compute_summarystatistics(
         @by(
             :otu_id,
             :noccurrences = length(:otu_id),
-            :mean_log_frequency = Statistics.mean(skipmissing(:log_frequency)),
-            :var_log_frequency = Statistics.var(skipmissing(:log_frequency), corrected=false),
+            :mean_frequency = Statistics.mean(skipmissing(:frequency)),
+            :var_frequency = Statistics.var(skipmissing(:frequency), corrected=false),
             #~ Compute the occupancy; i.e. the fraction of samples (runs) wherein the focal
             #  species is actually present
             :occupancy = length(:otu_id) ./ nruns
         )
         #~ Take the occupation number into account
         #~ i.e., only take into account species that appeared in most runs
-        @subset(:noccurrences .> minoccurrences, :var_log_frequency .> 0.0)
+        @subset(:noccurrences .> minoccurrences, :var_frequency .> 0.0)
         #~ this means that μ → o⋅μ and σ² → o⋅[σ²+μ²(1-o)], where o the occupancy
-        @transform(:mean_log_frequency = :mean_log_frequency .* :occupancy)
-        @transform(:var_log_frequency = :var_log_frequency .+
-                                        :mean_log_frequency.^2 .* (1 .- :occupancy))
-        @transform(:var_log_frequency = :var_log_frequency .* :occupancy)
-        @transform(:std_log_frequency = sqrt.(:var_log_frequency))
-        @select(Not(:var_log_frequency))
+        @transform(:mean_frequency = :mean_frequency .* :occupancy)
+        @transform(:var_frequency = :var_frequency .+
+                                        :mean_frequency.^2 .* (1 .- :occupancy))
+        @transform(:var_frequency = :var_frequency .* :occupancy)
+        @transform(:mean_log_frequency = log.(:mean_frequency))
+        @transform(:std_frequency = sqrt.(:var_frequency))
+        @select(Not(:var_frequency))
         #~ Perform a log-transform on the mean-frequency (needed for lognormal)
         # @transform(:mean_log_frequency = log.(:mean_frequency))
         #~ Select only those with non-zero variance (i.e., >1 reads)
@@ -387,30 +388,31 @@ function compute_rescaledlogfrequencies(
             :otu_id,
             :mean_log_frequency = mean(Histogram.compute_fhist(:log_frequency)),
             :var_log_frequency = std(Histogram.compute_fhist(:log_frequency)).^2,
-            :sample_mean_log_frequency = mean(:log_frequency),
-            :sample_var_log_frequency = std(:log_frequency, corrected=false).^2,
+            :sample_mean_frequency = mean(:frequency),
+            :sample_var_frequency = std(:frequency, corrected=false).^2,
             :max_log_frequency = maximum(:log_frequency),
             :min_log_frequency = minimum(:log_frequency),
             :occupancy = length(:otu_id) ./ nruns
         )
-        @subset(:var_log_frequency .> 0.0, :sample_var_log_frequency .> 0.0)
+        @subset(:var_log_frequency .> 0.0, :sample_var_frequency .> 0.0)
         #~ Take the occupancy into account
         @transform(:mean_log_frequency = :mean_log_frequency .* :occupancy)
         @transform(:var_log_frequency = :var_log_frequency .+
                                         :mean_log_frequency.^2 .* (1 .- :occupancy))
         @transform(:var_log_frequency = :var_log_frequency .* :occupancy)
-        @transform(:sample_mean_log_frequency = :sample_mean_log_frequency .* :occupancy)
-        @transform(:sample_var_log_frequency = :sample_var_log_frequency .+
-                                        :sample_mean_log_frequency.^2 .* (1 .- :occupancy))
-        @transform(:sample_var_log_frequency = :sample_var_log_frequency .* :occupancy)
+        @transform(:sample_mean_frequency = :sample_mean_frequency .* :occupancy)
+        @transform(:sample_var_frequency = :sample_var_frequency .+
+                                        :sample_mean_frequency.^2 .* (1 .- :occupancy))
+        @transform(:sample_var_frequency = :sample_var_frequency .* :occupancy)
         #~ Compute the standard deviation
         @transform(:std_log_frequency = sqrt.(:var_log_frequency))
-        @transform(:sample_std_log_frequency = sqrt.(:sample_var_log_frequency))
+        @transform(:sample_mean_log_frequency = log.(:sample_mean_frequency))
+        @transform(:sample_std_frequency = sqrt.(:sample_var_frequency))
         #~ Select only relevant columns
         @select(
             :otu_id,
             :mean_log_frequency, :std_log_frequency,
-            :sample_mean_log_frequency, :sample_std_log_frequency
+            :sample_mean_log_frequency, :sample_std_frequency
         )
     end
     
@@ -423,7 +425,7 @@ function compute_rescaledlogfrequencies(
         #  mean here has no statistical meaning
         @transform(
             :sample_log_frequency = 
-                (:log_frequency .- :sample_mean_log_frequency) ./ :sample_std_log_frequency
+                (:log_frequency .- :sample_mean_log_frequency) ./ :sample_std_frequency
         )
         @transform(:log_frequency = (:log_frequency.-:mean_log_frequency)./:std_log_frequency)
         #~ Omit (log) frequencies that are NaN and/or missing

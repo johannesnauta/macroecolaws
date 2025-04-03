@@ -20,7 +20,9 @@ function fittrunclognormal(samples; uguess = [-10.0, 1.0], lower=-Inf, upper=Inf
     function negtruncnormlikelihood(p, data)
         μ, logσ = p
         truncnorm = truncated(Normal(μ, exp(logσ)), lower=lower, upper=upper)
-        return -sum(logpdf.(truncnorm, data))
+        #~ make sure to check for data above the lower cutoff, otherwise the
+        #  logpdf will have zeros leading to -Inf loglikelihoods
+        return -sum(logpdf.(truncnorm, data[data.>lower]))
     end
 
     result = Optim.optimize(

@@ -47,7 +47,7 @@ function plot_afd(;
     )
     ax = Axis(
         fig[1,1],
-        limits=(-2,6,1e-4,1e0),
+        limits=(-10,6,1e-4,1e0),
         xlabel=L"\textrm{rescaled\;log\;abundances}", ylabel=L"\textrm{pdf}",
         xlabelsize=12, ylabelsize=12,
         yscale=log10, yminorticksvisible=false,
@@ -73,8 +73,10 @@ function plot_afd(;
         for (i, envname) in enumerate(edb.environmentname)
             filename = CSVDATAPATH * prefix * "rescaledlogfrequencydata_$(envname).csv"
             freqdb = CSV.read(filename, DataFrame, delim=", ")
-            append!(freqs, exp.(freqdb[!,:log_frequency]))
+            @info "hm" freqdb.sample_log_frequency
+            append!(freqs, exp.(freqdb[!,:sample_log_frequency]))
         end
+        @info "here?" freqs
         #~ Fit gamma distribution
         gammafit = Distributions.fit_mle(Gamma, freqs)
         lognormfit = Distributions.fit_mle(LogNormal, freqs)
@@ -88,33 +90,35 @@ function plot_afd(;
         lognormparams = JLD2.load(jlddir * "lognormalparams.jld2")
         μ, σ = lognormparams["μ"], lognormparams["σ"]
     end
-
-    #/ Plot fitted gamma distribution
-    xfits = exp.(range(-9, 5, 256))
-    ygamma = xfits .* Distributions.pdf.(Gamma(α,θ), xfits)
-    ylognormal = xfits .* Distributions.pdf(LogNormal(μ,σ), xfits)
-    gammaline = lines!(ax, log.(xfits), ygamma, color=:black, linewidth=.8, linestyle=:dash)
-    lognormalline = lines!(ax, log.(xfits), ylognormal, color=:black, linewidth=.8)
-
+    
+    #/ Scatter plot the histograms of rescaled log frequencies
     for (i, envname) in enumerate(edb.environmentname)
         filename = CSVDATAPATH * prefix * "rescaledlogfrequencydata_$(envname).csv"
         freqdb = CSV.read(filename, DataFrame, delim=", ")
         gammafit = Distributions.fit_mle(Gamma, exp.(freqdb.log_frequency))
         #/ Load histogram and normalize
-        fh = JLD2.load(jlddir*"afdfhist_$(envname).jld2")["histogram"] |> normalize
+        fh = JLD2.load(jlddir*"sampleafdfhist_$(envname).jld2")["histogram"] |> normalize
         #~ Compute x-values at which to plot
         xplot = (fh.binedges[begin][2:end] + fh.binedges[begin][1:end-1]) ./ 2
         #~ Rescale to standard gamma
         # xplot = xplot .- (gammafit.α * gammafit.θ)
-        # yplot = fh.bincounts .* sqrt(gammafit.α * gammafit.θ^2)
-        
+        # yplot = fh.bincounts .* sqrt(gammafit.α * gammafit.θ^2)        
         
         #/ Plot
         scatter!(
-            ax, xplot, fh.bincounts, markersize=4, strokewidth=.5,
+            ax, xplot, fh.bincounts, markersize=3.5, strokewidth=.4,
             marker=markers[i], color=colors[i], label=envname
         )
-    end    
+    end  
+
+    #/ Plot fitted gamma distribution
+    xfits = exp.(range(-9, 5, 256))
+    ygamma = xfits .* Distributions.pdf.(Gamma(α,θ), xfits)
+    ylognormal = xfits .* Distributions.pdf(LogNormal(μ,σ), xfits)
+    gammaline = lines!(ax, log.(xfits), ygamma, color=:black, linewidth=1.)
+    lognormalline = lines!(
+        ax, log.(xfits), ylognormal, color=:black, linewidth=.8, linestyle=(:dash,:dense)
+    ) 
     
     #/ Add legend(s)
     axislegend(
