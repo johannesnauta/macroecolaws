@@ -53,7 +53,7 @@ function analyse(;
     afd=true,       #~ Flag to compute histogram of abundance fluctuations of (filtered) data
     moments=true,   #~ Flag to compute estimates of moments of (filtered) data
     fitparams=true, #~ Flag to individual parameters for the (log) frequency distribution(s)
-    dry=false       #~ Flag for a 'dry' run, wherein nothing is saved (may break things)
+    dry=false       #~ Flag for a 'dry' run, wherein nothing is saved [note: may break things]
 )
     #/ Load and split data
     if split
@@ -106,7 +106,7 @@ function analyse(;
                         CSV.write(logfreqfname, __logfreqdb, delim=", ")
                         #~ write rescaled frequencies
                         __rescaledlogfreqdb = DataFrames.select(rescaledlogfreqdb,
-                            [:otu_id,:experiment_day,:log_frequency]
+                            [:otu_id,:experiment_day,:log_frequency,:sample_log_frequency]
                         )
                         CSV.write(rescaledlogfreqfname, __rescaledlogfreqdb, delim=", ")
                     end
@@ -131,8 +131,10 @@ function analyse(;
                 if afd
                     #/ Compute histogram
                     fh = Histogram.compute_fhist(rescaledlogfreqdb[!,:log_frequency])
+                    sfh = Histogram.compute_fhist(rescaledlogfreqdb[!,:sample_log_frequency])
                     if !dry
-                        JLD2.jldsave(JLDATAPATH * "afdfhist_$(env).jld2"; histogram = fh)
+                        JLD2.jldsave(JLDATAPATH * "afdfhist_$(env).jld2"; histogram=fh)
+                        JLD2.jldsave(JLDATAPATH * "sampleafdfhist_$(env).jld2"; histogram=sfh)
                     end
                 end
                 #/ if fitparams=true, compute the parameters of the distribution for each
@@ -243,6 +245,9 @@ function split_data(db::DataFrame; dry=false)
     return environmentnamesdb
 end
 
+"""
+    Filter the data by omitting all samples/environments that fall below some thresholds
+"""
 function filter_data(db::DataFrame;
     minsamples = 30,
     minreads = 1000,
@@ -273,31 +278,44 @@ Compute statistics for a specific filtered dataframe
 
 !note: Assumes that the frequency is defined as #count/#totalreads
 """
-function compute_summarystatistics(fdb::DataFrame; cutoff::Float64 = -100.0)
+function compute_summarystatistics(
+    fdb::DataFrame;
+    cutoff::Float64 = -100.0,
+    minoccurrences::Int = 50
+)
     #/ Compute the total number of runs/samples for the specific environment
     nruns = length(unique(fdb[!,:run_id]))
     #/ Chain multiple dataframe operations to compute mean frequency
     statsdb = @chain fdb begin
         #~ Compute frequencies
         @transform(:frequency = :count ./ :nreads)
+        @transform(:log_frequency = log.(:frequency))
+        #~ Filter frequencies that are too rate
+        @subset(:log_frequency .> cutoff)
         #~ For each species (OTU), group, and compute mean and variance of the frequency
         @by(
             :otu_id,
-            :mean_frequency = Statistics.mean(skipmissing(:frequency)),
-            :var_frequency = Statistics.var(skipmissing(:frequency), corrected=false),
+            :noccurrences = length(:otu_id),
+            :mean_log_frequency = Statistics.mean(skipmissing(:log_frequency)),
+            :var_log_frequency = Statistics.var(skipmissing(:log_frequency), corrected=false),
             #~ Compute the occupancy; i.e. the fraction of samples (runs) wherein the focal
             #  species is actually present
             :occupancy = length(:otu_id) ./ nruns
         )
         #~ Take the occupation number into account
+        #~ i.e., only take into account species that appeared in most runs
+        @subset(:noccurrences .> minoccurrences, :var_log_frequency .> 0.0)
         #~ this means that μ → o⋅μ and σ² → o⋅[σ²+μ²(1-o)], where o the occupancy
-        # @transform(:mean_frequency = :mean_frequency .* :occupancy)
-        # @transform(:var_frequency = :var_frequency .+ :mean_frequency.^2 .* (1 .- :occupancy))
-        # @transform(:var_frequency = :var_frequency .* :occupancy)
+        @transform(:mean_log_frequency = :mean_log_frequency .* :occupancy)
+        @transform(:var_log_frequency = :var_log_frequency .+
+                                        :mean_log_frequency.^2 .* (1 .- :occupancy))
+        @transform(:var_log_frequency = :var_log_frequency .* :occupancy)
+        @transform(:std_log_frequency = sqrt.(:var_log_frequency))
+        @select(Not(:var_log_frequency))
         #~ Perform a log-transform on the mean-frequency (needed for lognormal)
-        @transform(:mean_log_frequency = log.(:mean_frequency))
-        #~ Select only those above a specified cutoff (filter)
-        @subset(:mean_log_frequency .> cutoff, :var_frequency .> 0.0)
+        # @transform(:mean_log_frequency = log.(:mean_frequency))
+        #~ Select only those with non-zero variance (i.e., >1 reads)
+        # @subset(:std_frequency .> 0.0)
     end
     return statsdb
 end
@@ -309,13 +327,12 @@ Compute log frequencies (relative abundances) across communities (samples)
 !note: Assumes that the frequency (relative abundance) is defined as #count/#totalreads
 """
 function compute_logfrequencies(fdb::DataFrame; cutoff = -100.0)
-	  #/ Compute the total number of runs/samples for the specific environment
-    nruns = length(unique(fdb[!,:run_id]))
     #/ Chain multiple dataframe operations to compute the log frequency
     db = @chain fdb begin
         #~ Compute frequencies
         @transform(:frequency = :count ./ :nreads)
         @transform(:log_frequency = log.(:frequency))
+        #~ ensure all log frequencies are above a cutoff
         @subset(:log_frequency .> cutoff)
         @select(:otu_id, :sample_id, :run_id, :experiment_day, :log_frequency)
     end
@@ -334,7 +351,11 @@ Compute rescaled log frequencies (relative abundances) across communities (sampl
 
 !note: Assumes that the frequency is defined as #count/#totalreads
 """
-function compute_rescaledlogfrequencies(fdb::DataFrame; cutoff = -100.0)
+function compute_rescaledlogfrequencies(
+    fdb::DataFrame;
+    cutoff = -100.0,
+    minoccurrences::Int = 50
+)
     #/ Compute the total number of runs/samples for the specific environment
     nruns = length(unique(fdb[!,:run_id]))
     #/ Chain multiple dataframe operations to compute the rescaled log frequency
@@ -346,26 +367,51 @@ function compute_rescaledlogfrequencies(fdb::DataFrame; cutoff = -100.0)
         @subset(:log_frequency .> cutoff)
     end
 
-    odb = @by(db, :otu_id, :noccurances = length(:otu_id))
+    #~ filter out entries that do not have enough occurences to compute a distribution
+    #~ and those that have many repeated values (i.e., where the min=max)
+    odb = @by(
+        db, :otu_id,
+        :noccurrences = length(:otu_id),
+        :min_log_frequency = minimum(:log_frequency),
+        :max_log_frequency = maximum(:log_frequency)
+    )
     db = leftjoin(db, odb, on=:otu_id)
-    db = @subset(db, :noccurances .> 1)
+    db = @subset(db,
+        :noccurrences .> minoccurrences,
+        :max_log_frequency .- :min_log_frequency .> 0
+    )
 
     #/ Compute summary statistics for each otu_id
     summarydb = @chain db begin
-            # :mean_logfrequency = mean(Histogram.compute_fhist(skipmissing(:log_frequency))),
-            # :mean_logfrequency = mean(:fhist),
-            # :std_logfrequency = std(:fhist, corrected=false),
-            # :std_logfrequency = std(skipmissing(:log_frequency), corrected=false),
         @by(
             :otu_id,
-            # :mean_logfrequency = mean(:log_frequency),
-            # :std_logfrequency = std(:log_frequency),            
-            :mean_logfrequency = mean(Histogram.compute_fhist(:log_frequency)),
-            :std_logfrequency = std(Histogram.compute_fhist(:log_frequency)),
+            :mean_log_frequency = mean(Histogram.compute_fhist(:log_frequency)),
+            :var_log_frequency = std(Histogram.compute_fhist(:log_frequency)).^2,
+            :sample_mean_log_frequency = mean(:log_frequency),
+            :sample_var_log_frequency = std(:log_frequency, corrected=false).^2,
+            :max_log_frequency = maximum(:log_frequency),
+            :min_log_frequency = minimum(:log_frequency),
             :occupancy = length(:otu_id) ./ nruns
         )
-        @subset(:std_logfrequency .> 0.0, :occupancy .≈1.)
-        @select(:otu_id, :mean_logfrequency, :std_logfrequency)
+        @subset(:var_log_frequency .> 0.0, :sample_var_log_frequency .> 0.0)
+        #~ Take the occupancy into account
+        @transform(:mean_log_frequency = :mean_log_frequency .* :occupancy)
+        @transform(:var_log_frequency = :var_log_frequency .+
+                                        :mean_log_frequency.^2 .* (1 .- :occupancy))
+        @transform(:var_log_frequency = :var_log_frequency .* :occupancy)
+        @transform(:sample_mean_log_frequency = :sample_mean_log_frequency .* :occupancy)
+        @transform(:sample_var_log_frequency = :sample_var_log_frequency .+
+                                        :sample_mean_log_frequency.^2 .* (1 .- :occupancy))
+        @transform(:sample_var_log_frequency = :sample_var_log_frequency .* :occupancy)
+        #~ Compute the standard deviation
+        @transform(:std_log_frequency = sqrt.(:var_log_frequency))
+        @transform(:sample_std_log_frequency = sqrt.(:sample_var_log_frequency))
+        #~ Select only relevant columns
+        @select(
+            :otu_id,
+            :mean_log_frequency, :std_log_frequency,
+            :sample_mean_log_frequency, :sample_std_log_frequency
+        )
     end
     
     #/ Rescale the log frequency by the summary statistics
@@ -375,11 +421,17 @@ function compute_rescaledlogfrequencies(fdb::DataFrame; cutoff = -100.0)
         #~?Why does this particular step 'work', as the log_frequencies are *not*
         #  normally distributed (in fact, they are most likely gamma distributed), so the
         #  mean here has no statistical meaning
-        @transform(:log_frequency = (:log_frequency.-:mean_logfrequency)./:std_logfrequency)
+        @transform(
+            :sample_log_frequency = 
+                (:log_frequency .- :sample_mean_log_frequency) ./ :sample_std_log_frequency
+        )
+        @transform(:log_frequency = (:log_frequency.-:mean_log_frequency)./:std_log_frequency)
         #~ Omit (log) frequencies that are NaN and/or missing
         @transform(:log_frequency = coalesce.(:log_frequency, -Inf))
         @subset(:log_frequency .> -Inf, :log_frequency .< Inf)
-        @subset(:log_frequency .> cutoff)
+        @transform(:sample_log_frequency = coalesce.(:sample_log_frequency, -Inf))
+        @subset(:sample_log_frequency .> -Inf, :sample_log_frequency .< Inf)
+        @subset(:log_frequency .> cutoff, :sample_log_frequency .> cutoff)
     end
     return db
 end
@@ -398,7 +450,7 @@ function compute_shapescale(fdb::DataFrame; mindays::Int = 30, prior=Distributio
     #~ For each otu_id, fit a Gamma mixture distribution and
     #  collect the shape and scale parameters
     pdb = @chain fdb begin
-        @transform(:frequency = exp10.(:log_frequency))
+        @transform(:frequency = exp.(:log_frequency))
         @groupby(:otu_id)
         @combine(
             :mleparams = Mixture.fit_mixture(

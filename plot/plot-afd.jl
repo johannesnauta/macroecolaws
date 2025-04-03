@@ -47,7 +47,7 @@ function plot_afd(;
     )
     ax = Axis(
         fig[1,1],
-        limits=(-10,6,1e-4,1e0),
+        limits=(-2,6,1e-4,1e0),
         xlabel=L"\textrm{rescaled\;log\;abundances}", ylabel=L"\textrm{pdf}",
         xlabelsize=12, ylabelsize=12,
         yscale=log10, yminorticksvisible=false,
@@ -64,7 +64,7 @@ function plot_afd(;
     edb = CSV.read(envstatsfname, DataFrame, delim=", ")
     #/ Filter envnames to include only those for which a histogram exists
     #~!note: these should total 9 distinct environments
-    edb = filter(row -> isfile(jlddir*"afdfhist_$(row.environmentname).jld2"), edb)
+    edb = filter(row -> isfile(jlddir*"sampleafdfhist_$(row.environmentname).jld2"), edb)
     
     #/ Compute and save moments if they do not exist, otherwise load them
     if compute_moments
@@ -90,17 +90,24 @@ function plot_afd(;
     end
 
     #/ Plot fitted gamma distribution
-    xfits = exp.(range(-9, 5, 16))
+    xfits = exp.(range(-9, 5, 256))
     ygamma = xfits .* Distributions.pdf.(Gamma(α,θ), xfits)
     ylognormal = xfits .* Distributions.pdf(LogNormal(μ,σ), xfits)
     gammaline = lines!(ax, log.(xfits), ygamma, color=:black, linewidth=.8, linestyle=:dash)
     lognormalline = lines!(ax, log.(xfits), ylognormal, color=:black, linewidth=.8)
 
     for (i, envname) in enumerate(edb.environmentname)
+        filename = CSVDATAPATH * prefix * "rescaledlogfrequencydata_$(envname).csv"
+        freqdb = CSV.read(filename, DataFrame, delim=", ")
+        gammafit = Distributions.fit_mle(Gamma, exp.(freqdb.log_frequency))
         #/ Load histogram and normalize
         fh = JLD2.load(jlddir*"afdfhist_$(envname).jld2")["histogram"] |> normalize
         #~ Compute x-values at which to plot
         xplot = (fh.binedges[begin][2:end] + fh.binedges[begin][1:end-1]) ./ 2
+        #~ Rescale to standard gamma
+        # xplot = xplot .- (gammafit.α * gammafit.θ)
+        # yplot = fh.bincounts .* sqrt(gammafit.α * gammafit.θ^2)
+        
         
         #/ Plot
         scatter!(
