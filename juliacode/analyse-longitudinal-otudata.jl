@@ -46,14 +46,15 @@ map(mkpath, [RDATAPATH, CSVDATAPATH, JLDATAPATH])
 "Load, split and filter data, and afterwards compute statistics for each environment"
 function analyse(;
     rdatafilename = RDATAPATH*"longitudinal.RData",
-    split=true,     #~ Flag to split raw data into environment-specific data
-    filter=true,    #~ Flag to filter raw data based on counts, reads, etc.
-    compute=true,   #~ Flag to compute statistics (mean, var, etc.) from (filtered) data
-    mad=true,       #~ Flag to compute histogram of mean abundances of (filtered) data
-    afd=true,       #~ Flag to compute histogram of abundance fluctuations of (filtered) data
-    moments=true,   #~ Flag to compute estimates of moments of (filtered) data
-    fitparams=true, #~ Flag to individual parameters for the (log) frequency distribution(s)
-    dry=false       #~ Flag for a 'dry' run, wherein nothing is saved [note: may break things]
+    split=true,      #~ Flag to split raw data into environment-specific data
+    filter=true,     #~ Flag to filter raw data based on counts, reads, etc.
+    compute=true,    #~ Flag to compute statistics (mean, var, etc.) from (filtered) data
+    mad=true,        #~ Flag to compute histogram of mean abundances of (filtered) data
+    afd=true,        #~ Flag to compute histogram of abundance fluctuations of (filtered) data
+    moments=true,    #~ Flag to compute estimates of moments of (filtered) data
+    fitparams=true,  #~ Flag to individual parameters for the (log) frequency distribution(s)
+    correlation=true,#~ Flag to compute Pearsons correlation coefficient
+    dry=false        #~ Flag for a 'dry' run, wherein nothing is saved [note: may break things]
 )
     #/ Load and split data
     if split
@@ -92,6 +93,7 @@ function analyse(;
                     statsdb = compute_summarystatistics(edb, cutoff=cutoff)
                     logfreqdb = compute_logfrequencies(edb, cutoff=cutoff)
                     rescaledlogfreqdb = compute_rescaledlogfrequencies(edb, cutoff=cutoff)
+                    return logfreqdb
                     #/ Save
                     if !dry
                         statsfname = CSVDATAPATH*"meanfrequencydata_$(env).csv"
@@ -469,6 +471,37 @@ function compute_shapescale(fdb::DataFrame; mindays::Int = 30, prior=Distributio
         @select(Not(:mleparams))
     end
     return pdb
+end
+
+"""
+Compute Pearson correlation coefficient between trajectories
+"""
+function compute_pearson(fdb::DataFrame; mindays::Int = 30)
+    #~ Compute the total no. of days that the OTU was measured
+    daydb = @chain fdb begin        
+        @by(:otu_id, :ndays = length(unique(:experiment_day)))
+        @subset(:ndays .> mindays)
+    end
+    fdb = rightjoin(fdb, daydb, on=:otu_id)
+
+    #/ For each otu_id, compute the Pearson correlation coefficient with all other OTUs
+    #~ compute statistics, mean and variance, in order to compute the correlation
+    summarydb = @chain fdb begin
+        @by(
+            :otu_id,
+            :sample_mean_log_frequency = mean(:log_frequency),
+            :sample_var_log_frequency = std(:log_frequency, corrected=false).^2
+        )
+    end
+
+    #/ Extract all timeseries
+    seriesdb = @chain fdb begin
+        @select(:experiment_day, :otu_id, :log_frequency)
+        unstack(:experiment_day, :otu_id, :log_frequency)
+    end
+    
+    
+    return summarydb
 end
 
 end # module OTUData
