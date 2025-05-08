@@ -53,7 +53,7 @@ function analyse(;
     afd=true,        #~ Flag to compute histogram of abundance fluctuations of (filtered) data
     moments=true,    #~ Flag to compute estimates of moments of (filtered) data
     fitparams=true,  #~ Flag to individual parameters for the (log) frequency distribution(s)
-    correlation=true,#~ Flag to compute Pearsons correlation coefficient
+    pearson=true,    #~ Flag to compute Pearsons correlation coefficient
     dry=false        #~ Flag for a 'dry' run, wherein nothing is saved [note: may break things]
 )
     #/ Load and split data
@@ -93,7 +93,6 @@ function analyse(;
                     statsdb = compute_summarystatistics(edb, cutoff=cutoff)
                     logfreqdb = compute_logfrequencies(edb, cutoff=cutoff)
                     rescaledlogfreqdb = compute_rescaledlogfrequencies(edb, cutoff=cutoff)
-                    return logfreqdb
                     #/ Save
                     if !dry
                         statsfname = CSVDATAPATH*"meanfrequencydata_$(env).csv"
@@ -137,6 +136,16 @@ function analyse(;
                     if !dry
                         JLD2.jldsave(JLDATAPATH * "afdfhist_$(env).jld2"; histogram=fh)
                         JLD2.jldsave(JLDATAPATH * "sampleafdfhist_$(env).jld2"; histogram=sfh)
+                    end
+                end
+                #/ if pearson=true, compute the Pearson correlation coefficient between each
+                #  of the OTUs that have enough (overlapping) datapoints
+                if pearson
+                    pearsondb = compute_pearson(logfreqdb)
+                    if !dry
+                        JLD2.jldsave(
+                            JLDATAPATH * "pearsoncorrelation_$(env).jld2"; pearson=pearsondb
+                        )
                     end
                 end
                 #/ if fitparams=true, compute the parameters of the distribution for each
@@ -490,7 +499,7 @@ function compute_pearson(fdb::DataFrame; mindays::Int = 30)
         @by(
             :otu_id,
             :sample_mean_log_frequency = mean(:log_frequency),
-            :sample_var_log_frequency = std(:log_frequency, corrected=false).^2
+            :sample_std_log_frequency = std(:log_frequency, corrected=false)
         )
     end
 
@@ -499,9 +508,43 @@ function compute_pearson(fdb::DataFrame; mindays::Int = 30)
         @select(:experiment_day, :otu_id, :log_frequency)
         unstack(:experiment_day, :otu_id, :log_frequency)
     end
+
+    #/ Allocate
+    pearsondb = DataFrame(otu_id1 = Int[], otu_id2 = Int[], pearson=Float64[])
+
+    #/ Compute Pearson correlations
+    otus = names(seriesdb)[2:end]
+    for i in eachindex(otus), j in (i+1):length(otus)        
+        #~ note: there is most likely a DataFrame-y way to do things, but this if more clear
+        x = seriesdb[!,otus[i]]
+        y = seriesdb[!,otus[j]]
+        iidx = findfirst(==(parse(Int,otus[i])), summarydb.otu_id)
+        jidx = findfirst(==(parse(Int,otus[j])), summarydb.otu_id)        
+        meanx = summarydb[iidx,:].sample_mean_log_frequency
+        stdx = summarydb[iidx,:].sample_std_log_frequency
+        meany = summarydb[jidx,:].sample_mean_log_frequency
+        stdy = summarydb[jidx,:].sample_std_log_frequency
+        #~ compute Pearson correlation
+        xshift = passmissing(/).(passmissing(-).(x, meanx), stdx)
+        yshift = passmissing(/).(passmissing(-).(y, meany), stdy)
+        s = passmissing(*).(xshift, yshift)
+        n = count(!ismissing, s)
+        if n > mindays
+            push!(
+                pearsondb,
+                (
+                    otu_id1 = parse(Int,otus[i]),
+                    otu_id2 = parse(Int,otus[j]),
+                    pearson = sum(skipmissing(s)) / (n - 1)
+                )
+            )
+        end
+    end
+    #~ Filter out entries that have infinite correlation as n=1, or when |ρ|>1
+    #~ note: should not be needed if mindays is large enough, but do it anyways
+    pearsondb = @subset(pearsondb, :pearson .< 1., :pearson .> -1.)
     
-    
-    return summarydb
+    return pearsondb
 end
 
 end # module OTUData
