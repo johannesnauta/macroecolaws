@@ -485,7 +485,7 @@ end
 """
 Compute Pearson correlation coefficient between trajectories
 """
-function compute_pearson(fdb::DataFrame; mindays::Int = 30)
+function compute_pearson(fdb::DataFrame; mindays::Int = 50)
     #~ Compute the total no. of days that the OTU was measured
     daydb = @chain fdb begin        
         @by(:otu_id, :ndays = length(unique(:experiment_day)))
