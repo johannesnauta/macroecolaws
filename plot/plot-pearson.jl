@@ -105,6 +105,8 @@ function plot_pearson(;
                 ξ, ω, α = θhat
                 _fit = SkewNormal(ξ, ω^2, α)
                 _pdf = Distributions.pdf.(_fit, fitplot)
+                _mode = StatsBase.mode(_fit)
+                _mean = StatsBase.mean(_fit)
             else
                 #~ Just plot the "standard" skewnormal distribution with mean 0, variance 1,
                 #  and skewness of 1/2
