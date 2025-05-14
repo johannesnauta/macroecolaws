@@ -36,6 +36,7 @@ const JLDATAPATH = "../data/jld/"
 """
 function plot_mad(;
     prefix::String = "longitudinal/",
+    # prefix::String = "crosssectional/",
     envstatsfname::String = CSVDATAPATH * prefix * "environmentstats.csv",
     histdir::String = JLDATAPATH * prefix,
     rescale=true,
@@ -51,7 +52,7 @@ function plot_mad(;
         fig[1,1],
         limits=(-4,4,1e-3,1e0),
         xlabel=L"\textrm{rescaled\;log\;abundances}", ylabel=L"\textrm{pdf}",
-        xlabelsize=12, ylabelsize=12,
+        xlabelsize=11, ylabelsize=11,
         yscale=log10, yminorticksvisible=false,
         xticklabelsize=8, yticklabelsize=8
     )
