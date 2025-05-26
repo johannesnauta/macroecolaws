@@ -22,13 +22,28 @@ function fittrunclognormal(samples; uguess = [-10.0, 1.0], lower=-Inf, upper=Inf
         truncnorm = truncated(Normal(μ, exp(logσ)), lower=lower, upper=upper)
         #~ make sure to check for data above the lower cutoff, otherwise the
         #  logpdf will have zeros leading to -Inf loglikelihoods
-        return -sum(logpdf.(truncnorm, data[data.>lower]))
+        return -sum(logpdf.(truncnorm, data[data .> lower]))
     end
 
     result = Optim.optimize(x -> neglikelihood(x, samples), uguess, Optim.NelderMead())
     (Optim.converged(result)) && (return Optim.minimizer(result))
     @info "Optimizer not converged, returning guesses"
     return uguess
+end
+
+"[wip] Nonlinearsolve for the MLE from Grilli"
+function compute_MAD_params_nlsolve(m1, m2, c)
+    function f!(dx, x, p)
+        dx[1] = x[1] - m1 +
+                sqrt(2/π) * x[2] * exp(-(c - x[1])^2 / (2 * x[2]^2)) /
+                erfc((c - x[1]) / sqrt(2 * x[2]^2))
+        dx[2] = x[2]^2 + m1*x[1] + c*m1 - x[1]*c - m2
+    end
+
+    prob = NonlinearProblem(f!, [-15.0, 2.0])
+    sol = solve(prob, NewtonRaphson())
+
+    return sol.u[1], sol.u[2]
 end
 
 """Compute parameters of a generalized gamma distribution"""

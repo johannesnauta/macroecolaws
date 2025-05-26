@@ -36,7 +36,8 @@ using .Moments
     Aggregates all environments into a single plot
 """
 function plot_afd(;
-    prefix::String = "longitudinal/",
+    # prefix::String = "longitudinal/",
+    prefix::String = "crosssectional/",
     envstatsfname::String = CSVDATAPATH * prefix * "environmentstats.csv",
     jlddir::String = JLDATAPATH * prefix,
     compute_moments = true,
@@ -52,7 +53,7 @@ function plot_afd(;
         fig[1,1],
         limits=(-10,6,1e-4,1e0),
         xlabel=L"\textrm{rescaled\;log\;abundances}", ylabel=L"\textrm{pdf}",
-        xlabelsize=12, ylabelsize=12,
+        xlabelsize=11, ylabelsize=11,
         yscale=log10, yminorticksvisible=false,
         xticklabelsize=9, yticklabelsize=9
     )
@@ -76,7 +77,10 @@ function plot_afd(;
         for (i, envname) in enumerate(edb.environmentname)
             filename = CSVDATAPATH * prefix * "rescaledlogfrequencydata_$(envname).csv"
             freqdb = CSV.read(filename, DataFrame, delim=", ")
-            append!(freqs, exp.(freqdb[!,:log_frequency]))
+            # @info "hm" freqdb
+            # append!(freqs, exp.(freqdb[!,:log_frequency]))
+            nonzerofreqs = filter(x -> x > 0, freqdb[!,:frequency])            
+            append!(freqs, nonzerofreqs)
         end
         #~ Fit gamma distribution
         gammafit = Distributions.fit_mle(Gamma, freqs)
@@ -123,7 +127,7 @@ function plot_afd(;
     #/ Add legend(s)
     axislegend(
         ax, [gammaline, lognormalline], [L"\textrm{gamma}", L"\textrm{lognormal}"],
-        position=:lt, labelsize=8, nbanks=1, patchlabelgap=1.2,
+        position=:lt, labelsize=9, nbanks=1, patchlabelgap=1.2,
         patchsize=(6,1), padding=0, margin=(2,0,0,2), framevisible=false
     )
     Legend(

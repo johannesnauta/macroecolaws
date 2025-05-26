@@ -85,9 +85,83 @@ function plot_trajectories(;
                 ax[x,y], plotdb.experiment_day, plotdb.log_frequency, linewidth=.4
             )
         end
-    end
+    end    
+
+    return fig
+end
+
+"""
+		Plot abundance trajectories of the first n OTUs that have the most datapoints, but this
+    time only for a single environment
+"""
+function plot_trajectory(;
+    topno::Int = 1,
+    prefix::String = "longitudinal/",
+    environment = "M_leftpalm",
+    trajectorydir::String = CSVDATAPATH * prefix,
+    envnamefname::String = CSVDATAPATH * prefix * "environmentnames.csv",
+    augment = true, #~ augment with zeros when no data on a specific day
+    savefig = true,
+    figname = nothing
+)
+    #/ Create figure
+    width = .9 * 246
+    fig = Figure(;
+        size=(width,width/1.67), figure_padding=(2,8,2,2), backgroundcolor=:transparent
+    )
+
+    #/ Load environmentnames
+    envdb = CSV.read(envnamefname, DataFrame, delim=", ", types=String)
+    #/ Filter environments to include only those for which trajectories exist
+    envdb = filter(row -> row.environmentname == environment, envdb)
+    envdb = @transform(envdb, :texname = replace.(:environmentname, "_" => "\\;"))
+
+    ax = Axis(
+        fig[1,1],
+        title=L"\textrm{M\;left palm}", titlesize=10, titlegap=1,
+        xlabel=L"\textrm{time (days)}",
+        ylabel=L"\textrm{log\;rel.\;abundances}",
+        xlabelsize=11, ylabelsize=11,
+        xticklabelsvisible=true, yticklabelsvisible=true,
+        xticks=LinearTicks(5),
+        xminorticks=IntervalsBetween(5), xminorticksvisible=true, xminorticksize=1.5,
+        yminorticks=IntervalsBetween(3), yminorticksvisible=true, yminorticksize=1.5,
+        limits=(0,450,-9,0),
+        xticklabelsize=8, yticklabelsize=8,
+    )
     
 
+    #/ Load trajectories
+    db = CSV.read(trajectorydir * "logfrequencydata_$(environment).csv", DataFrame, delim=", ")
+    #/ Select the top n trajectories with the most days
+    #~ find the OTUs that have the most days
+    topdb = @chain db begin
+        @by(:otu_id, :ndays = length(unique(:experiment_day)))
+        @orderby(-:ndays)
+        first(topno)
+    end
+    (topno < Inf) && (topdb = first(topdb, topno))
+    @info extrema(topdb.ndays)
+    fdb = filter(row -> row.otu_id in topdb.otu_id, db)
+    fdb = @orderby(fdb, :otu_id)
+
+    #/ Plot
+    for (n,otu) in enumerate(topdb.otu_id)
+        plotdb = filter(row -> row.otu_id == otu, fdb)
+        plotdb = @orderby(plotdb, :experiment_day)
+        #~ augment with some zeros
+        if augment
+            start,stop = minimum(plotdb.experiment_day), maximum(plotdb.experiment_day)
+            plotdays = vcat(plotdb.experiment_day, setdiff(start:stop,plotdb.experiment_day))
+            sort!(plotdays)
+            valdict = Dict(zip(plotdb.experiment_day, plotdb.log_frequency))
+            plotfreqs = [get(valdict, day, -10) for day in plotdays]
+            lines!(ax, plotdays, plotfreqs, linewidth=.3)
+        else
+            lines!(ax, plotdb.experiment_day, plotdb.log_frequency, linewidth=.3)
+        end
+    end
+    (savefig && !isnothing(figname)) && (CairoMakie.save(figname, fig, pt_per_unit=1))
     return fig
 end
 

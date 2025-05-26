@@ -35,8 +35,8 @@ const JLDATAPATH = "../data/jld/"
     Aggregates all environments into a single plot
 """
 function plot_mad(;
-    prefix::String = "longitudinal/",
-    # prefix::String = "crosssectional/",
+    # prefix::String = "longitudinal/",
+    prefix::String = "crosssectional/",
     envstatsfname::String = CSVDATAPATH * prefix * "environmentstats.csv",
     histdir::String = JLDATAPATH * prefix,
     rescale=true,
@@ -69,6 +69,9 @@ function plot_mad(;
     #~!note: these should total 9 distinct environments
     edb = filter(row -> isfile(histdir*"madfhist_$(row.environmentname).jld2"), edb)
 
+    minabundance = Inf
+    lognormline = nothing
+    
     for (i, envname) in enumerate(edb.environmentname)
         #/ Load histogram and normalize
         fh = JLD2.load(histdir*"madfhist_$(envname).jld2")["histogram"] |> normalize
@@ -97,7 +100,8 @@ function plot_mad(;
             #/ Normal rescaling
             if i == 1
                 n = Normal(0,1)
-                lines!(ax, xpdf, xpdf -> pdf(n,xpdf), color=:black, linewidth=0.8)
+                label = L"\textrm{lognorm}"
+                lognormline = lines!(ax, xpdf, xpdf -> pdf(n,xpdf), color=:black, linewidth=0.8)
             end
             xscaled = @. (xplot - μ) / σ
             pnormal = Normal(μ,σ)
@@ -108,10 +112,24 @@ function plot_mad(;
                 ax, xscaled, pdfscaled, markersize=4, strokewidth=.5,
                 color=colors[i], marker=markers[i], label=envname
             )
+
+            #~ compute min. abundance of the entire dataset
+            minabundance = min(minimum(xscaled), minabundance)
         end
     end
 
-    #/ Add legend
+    #~ vertically dashed line at minabundance
+    vl = vlines!(ax, [minabundance], color=(:gray,0.7), linestyle=(:dash,:dense),linewidth=1.)
+    txt = text!(
+        ax, 0.4, 0.4, text=L"\textrm{cutoff}\;c", fontsize=11, color=(:gray,1.0),
+        rotation=π/2, align=(:right,:top), space=:relative)
+    
+    #/ Add legends
+    axislegend(
+        ax, [lognormline], [L"\textrm{lognormal}"],
+        position=:rt, labelsize=9, nbanks=1, patchlabelgap=1.2,
+        patchsize=(6,1), padding=0, margin=(0,2,2,2), framevisible=false
+    )
     Legend(
         fig[1,2], ax, labelsize=8, rowgap=0, patchsize=(2,2), framevisible=false
     )
