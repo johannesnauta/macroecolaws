@@ -138,9 +138,9 @@ function analyse(;
                 if afd
                     #/ Compute histogram
                     #@ try something
-                    nonzerofreqs = filter(f->f>0, skipmissing(rescaledlogfreqdb[!,:frequency]))
-                    fh = Histogram.compute_fhist(log.(nonzerofreqs))
-                    # fh = Histogram.compute_fhist(rescaledlogfreqdb[!,:log_frequency])
+                    # nonzerofreqs = filter(f->f>0, skipmissing(rescaledlogfreqdb[!,:frequency]))
+                    # fh = Histogram.compute_fhist(log.(nonzerofreqs))
+                    fh = Histogram.compute_fhist(rescaledlogfreqdb[!,:log_frequency])
                     if !dry
                         JLD2.jldsave(JLDATAPATH * "afdfhist_$(env).jld2"; histogram = fh)
                     end
@@ -355,8 +355,10 @@ function compute_rescaledlogfrequencies(fdb::DataFrame; cutoff = -100.0)
             # :var_frequency = Statistics.var(skipmissing(:frequency), corrected=false),
             :mean_logfrequency = mean(skipmissing(:log_frequency)),
             :std_logfrequency = std(skipmissing(:log_frequency), corrected=false),
+            :numappearances = length(:otu_id),
             :occupancy = length(:otu_id) ./ nruns
         )
+        # @subset()
         # @transform(:mean_frequency = :mean_frequency .* :occupancy)
         # @transform(:var_frequency = :var_frequency .+ :mean_frequency.^2 .* (1 .- :occupancy))
         # @transform(:var_frequency = :var_frequency .* :occupancy)

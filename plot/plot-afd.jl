@@ -78,24 +78,42 @@ function plot_afd(;
             filename = CSVDATAPATH * prefix * "rescaledlogfrequencydata_$(envname).csv"
             freqdb = CSV.read(filename, DataFrame, delim=", ")
             # @info "hm" freqdb
-            # append!(freqs, exp.(freqdb[!,:log_frequency]))
-            nonzerofreqs = filter(x -> x > 0, freqdb[!,:frequency])            
-            append!(freqs, nonzerofreqs)
+            append!(freqs, exp.(freqdb[!,:log_frequency]))
+            # nonzerofreqs = filter(x -> x > 0, exp(freqdb[!,:log_frequency]))
+            # append!(freqs, nonzerofreqs)
         end
         #~ Fit gamma distribution
         gammafit = Distributions.fit_mle(Gamma, freqs)
+        _n = length(freqs)
+        AICgamma = 2*2 - 2*Distributions.loglikelihood(gammafit, freqs)
         lognormfit = Distributions.fit_mle(LogNormal, freqs)
+        AIClognorm = 2*2 - 2*Distributions.loglikelihood(lognormfit, freqs)
+        mixp = Moments.fit_mixture(freqs)
+        mixdist = Distributions.MixtureModel(
+            [Gamma(mixp.α,mixp.θ), LogNormal(mixp.μ,mixp.σ)], mixp.w
+        )
+        #~ compute AIC and AIC weights
+        #  this allows one to reason about the goodness of fit for each model and comparing them
+        AICmix = 5*2 - 2*Distributions.loglikelihood(mixdist, freqs)
+        AICmin = min(AICgamma, AIClognorm, AICmix)
+        AICweights = map(x -> exp((AICmin - x)/2), [AICgamma, AIClognorm, AICmix])
+        weights = map((x,y) -> (x,y), ["gamma", "lognormal", "mixture"], AICweights)
         α, θ = params(gammafit)
         μ, σ = params(lognormfit)
+        αm, θm, μm, σm, wm = values(mixp)
+        @info "AIC weights" weights
+        @info "pdf weights" wm
         jldsave(jlddir * "gammaparams.jld2"; α=α, θ=θ)
         jldsave(jlddir * "lognormalparams.jld2"; μ=μ, σ=σ)
+        jldsave(jlddir * "mixtureparams.jld2"; mixp)
     else
         gammaparams = JLD2.load(jlddir * "gammaparams.jld2")
         α, θ = gammaparams["α"], gammaparams["θ"]
         lognormparams = JLD2.load(jlddir * "lognormalparams.jld2")
         μ, σ = lognormparams["μ"], lognormparams["σ"]
+        mixtureparams = JLD2.load(jlddir * "mixtureparams.jld2")["mixp"]
+        αm, θm, μm, σm, wm = values(mixtureparams)
     end
-    
     #/ Scatter plot the histograms of rescaled log frequencies
     for (i, envname) in enumerate(edb.environmentname)
         filename = CSVDATAPATH * prefix * "rescaledlogfrequencydata_$(envname).csv"
@@ -119,14 +137,18 @@ function plot_afd(;
     xfits = exp.(range(-9, 5, 256))
     ygamma = xfits .* Distributions.pdf.(Gamma(α,θ), xfits)
     ylognormal = xfits .* Distributions.pdf(LogNormal(μ,σ), xfits)
-    gammaline = lines!(ax, log.(xfits), ygamma, color=:black, linewidth=1.)
+    mixdist = MixtureModel([Gamma(αm,θm), LogNormal(μm,σm)], wm)
+    ymix = xfits .* Distributions.pdf.(mixdist, xfits)
+    gammaline = lines!(ax, log.(xfits), ygamma, color=:gray, linewidth=1., linestyle=(:dot,:dense))
     lognormalline = lines!(
-        ax, log.(xfits), ylognormal, color=:black, linewidth=.8, linestyle=(:dash,:dense)
-    ) 
+        ax, log.(xfits), ylognormal, color=:gray, linewidth=.8, linestyle=(:dash,:dense)
+    )
+    mixline = lines!(ax, log.(xfits), ymix, color=:black, linewidth=1.)
     
     #/ Add legend(s)
     axislegend(
-        ax, [gammaline, lognormalline], [L"\textrm{gamma}", L"\textrm{lognormal}"],
+        ax, [gammaline, lognormalline, mixline],
+        [L"\textrm{gamma}", L"\textrm{lognormal}", L"\textrm{mixture}"],
         position=:lt, labelsize=9, nbanks=1, patchlabelgap=1.2,
         patchsize=(6,1), padding=0, margin=(2,0,0,2), framevisible=false
     )

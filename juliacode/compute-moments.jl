@@ -65,5 +65,30 @@ function fitgeneralizedgamma(samples; uguess = [log(5.),log(2.),log(1.)])
     return uguess
 end
 
+function fit_mixture(data; uguess = [1e-8,1.,2.,1.,0.5])
+    function negloglikelihood(p, data)
+        α, θ, μ, logσ, w1 = p
+        α = α^2
+        θ = θ^2
+        w = [w1^2, 1 - w1^2]
+        model = MixtureModel([Gamma(α,θ), LogNormal(μ,exp(logσ))], w)
+        return -sum(logpdf.(model, data))
+    end
+
+    result = Optim.optimize(x -> negloglikelihood(x, data), uguess, Optim.NelderMead())
+    if Optim.converged(result)
+        result = Optim.minimizer(result)
+        α = result[1]^2
+        θ = result[2]^2
+        μ = result[3]
+        σ = exp(result[4])
+        w1 = result[5]^2
+        w2 = 1 - w1
+        return (; α=α, θ=θ, μ=μ, σ=σ, w=[w1,w2])
+    end
+    @info "Optimizer not converged, returning guesses"
+    return uguess
+end
+
 end # module Moments
 #/ End module
