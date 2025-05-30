@@ -19,7 +19,7 @@ function fittrunclognormal(samples; uguess = [-10.0, 1.0], lower=-Inf, upper=Inf
     #/ Fit a truncated lognormal distribution
     function neglikelihood(p, data)
         μ, logσ = p
-        truncnorm = truncated(Normal(μ, exp(logσ)), lower=lower, upper=upper)
+        truncnorm = truncated(LogNormal(μ, exp(logσ)), lower=lower, upper=upper)
         #~ make sure to check for data above the lower cutoff, otherwise the
         #  logpdf will have zeros leading to -Inf loglikelihoods
         return -sum(logpdf.(truncnorm, data[data .> lower]))
@@ -45,6 +45,36 @@ function compute_MAD_params_nlsolve(m1, m2, c)
 
     return sol.u[1], sol.u[2]
 end
+
+"Use AIC to select the best truncation"
+function fit_truncatedlognormal_AIC(
+    data;
+    cvals = range(quantile(data, 0.01), stop=quantile(data, 1.0), length=256)
+)
+    maxloglikelihood = -Inf
+    cest = nothing
+    maxtruncnorm = nothing
+
+    for c in cvals
+        truncated_data = filter(x -> x > c, data)
+        if length(truncated_data) < 1e3
+            continue
+        end
+        uguess = [-1.0, 1.0]
+        μ, logσ = fittrunclognormal(truncated_data; uguess=uguess, lower=c)
+        truncnorm = truncated(LogNormal(μ, exp(logσ)), lower=c)
+        ll = Distributions.loglikelihood(truncnorm, truncated_data)
+        # Optionally penalize for small sample size
+        score = ll - 2 * 2  # AIC-like: -2LL + 2k, with k=2
+        if score > maxloglikelihood
+            maxloglikelihood = score
+            cest = c
+            maxtruncnorm = truncnorm
+        end
+    end
+    return maxtruncnorm
+end
+
 
 """Compute parameters of a generalized gamma distribution"""
 function generalizedgamma(x; a=a, d=d, p=p)
