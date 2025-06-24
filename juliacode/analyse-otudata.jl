@@ -51,6 +51,7 @@ function analyse(;
     mad=true,       #~ Flag to compute histogram of mean abundances of (filtered) data
     afd=true,       #~ Flag to compute histogram of abundance fluctuations of (filtered) data
     moments=true,   #~ Flag to compute estimates of moments of (filtered) data
+    logratio=true,  #~ Flag to compute log-ratios
     dry=false       #~ Flag for a 'dry' run, wherein nothing is saved (may break things)
 )
     #/ Load and split data
@@ -79,6 +80,7 @@ function analyse(;
             end
             #!note: if edb=nothing, then there are no datapoints that 'survive' the filtering
             if !isnothing(edb)
+                return edb
                 #/ if compute=true, compute summary statistics
                 #!note: Using the (filtered) statsdb both the lognormal and Taylor's law
                 #       can be extracted, so return the DataFrame here for completeness
@@ -144,6 +146,10 @@ function analyse(;
                     if !dry
                         JLD2.jldsave(JLDATAPATH * "afdfhist_$(env).jld2"; histogram = fh)
                     end
+                end
+                #/ if logratio=true, compute [...]
+                if logratio
+                    nothing
                 end
             end
         else
@@ -242,7 +248,7 @@ end
 function filter_data(db::DataFrame;
     minsamples = 30,
     minreads = 10_000,
-    mincounts = 1,
+    mincounts = 0,
     remove_runs = ["ERR1104477", "ERR1101508", "SRR2240575"] # bad runs filtered by Grilli
 )
     #/ Check the total number of samples
@@ -293,6 +299,42 @@ function compute_logfrequencies(fdb::DataFrame; cutoff = -100.0)
     end
 
     return db
+end
+
+"""
+Compute log-ratios across communities (samples)
+"""
+function compute_logratios(edb::DataFrame; handlemissing=false)
+    #/ Compute the relative abundance for each OTU
+    fdb = @chain edb begin
+        #~ Compute frequencies (rel. abundances)
+        @transform(:frequency = :count ./ :nreads)
+    end
+
+    mdb = unstack(fdb, :otu_id, :sample_id, :frequency)
+    ncols = ncol(mdb) - 1
+    #~ do something with missing values
+    if handlemissing
+        insertcols!(mdb, 2, :nmissing => [count(ismissing, row) / ncols for row in eachrow(mdb)])
+        sort!(mdb, :nmissing)
+        mdb = @subset(mdb, :nmissing .< 0.05)
+    end
+
+    #/ Compute the average log-ratio of each species
+    lrdb = Matrix(@select(mdb, Not(:otu_id, :nmissing)))
+    notus, nsamples = size(lrdb)
+    L = zeros(Float64, notus, notus)
+    Z = zeros(Int32, notus, notus)
+    for sample in 1:nsamples
+        for i in 1:notus, j in 1:notus
+            if !ismissing(lrdb[i,sample]) && !ismissing(lrdb[j,sample])
+                L[i,j] += log(lrdb[i,sample] / lrdb[j,sample])
+                Z[i,j] += 1
+            end
+        end
+    end
+    
+	  return L ./ Z
 end
 
 """
